@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}College Attendance System{% endblock %}</title>
+    <!-- Simple CDN for minimal styling (Tailwind CSS) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles if needed */
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <nav class="bg-indigo-600 p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="/" class="text-white text-xl font-bold">Attendance Manager</a>
+            <div class="space-x-4">
+                <a href="/live_attendance" class="text-white hover:text-indigo-200">Live Attendance</a>
+                <a href="/student_search" class="text-white hover:text-indigo-200">Student Search</a>
+                <a href="/download_total_attendance" class="text-white hover:text-indigo-200">Download Total Attendance</a>
+            </div>
+        </div>
+    </nav>
+    <main class="container mx-auto p-6">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

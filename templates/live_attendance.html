@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Live Attendance{% endblock %}
+
+{% block content %}
+<h1 class="text-3xl font-bold text-gray-800 mb-6">Live Attendance Session</h1>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    
+    <!-- Camera Feed and Controls -->
+    <div class="lg:col-span-2 bg-white p-4 rounded-lg shadow-xl">
+        <h2 class="text-xl font-semibold mb-3">Live Stream</h2>
+        <img id="video_feed" src="{{ url_for('video_feed') }}" class="w-full rounded-lg border-4 border-gray-300" alt="Live Video Feed">
+        
+        <div class="mt-4 flex space-x-4">
+            <button id="finalize-btn" 
+                    class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition duration-150">
+                Finalize & Save Attendance
+            </button>
+            <button id="download-btn" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-150">
+                Download Today's Report
+            </button>
+        </div>
+        <p id="status-message" class="mt-3 text-lg font-medium"></p>
+    </div>
+
+    <!-- Detected Students List -->
+    <div class="bg-white p-4 rounded-lg shadow-xl">
+        <h2 class="text-xl font-semibold mb-3">Detected Students (<span id="detected-count">0</span>)</h2>
+        <ul id="detected-list" class="space-y-2 max-h-96 overflow-y-auto">
+            <li class="text-gray-500 italic">Start the session to see detections...</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    const detectedList = document.getElementById('detected-list');
+    const detectedCount = document.getElementById('detected-count');
+    const finalizeBtn = document.getElementById('finalize-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const statusMessage = document.getElementById('status-message');
+
+    let currentAttendance = {}; // Local client-side mirror of detected students
+
+    // --- Real-time detection update (Poll the backend for detected list) ---
+    function updateDetectedStudents() {
+        // Since the Flask backend stores CURRENT_SESSION_ATTENDANCE globally, 
+        // we need an API endpoint to fetch it.
+        // For simplicity, in this basic structure, the detection happens in the video feed generator.
+        // We will assume the backend updates the list internally and focus on the finalization steps.
+        
+        // --- NOTE: In a production app, we would use WebSockets or AJAX polling to update the list here ---
+        // For this streamlined solution, the teacher sees the name pop up on the video frame 
+        // and relies on the 'Finalize' button to confirm the saved list.
+    }
+
+    // --- Finalize Attendance ---
+    finalizeBtn.addEventListener('click', async () => {
+        statusMessage.textContent = 'Saving attendance...';
+        finalizeBtn.disabled = true;
+
+        try {
+            const response = await fetch('/finalize_attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+            
+            if (response.ok) {
+                statusMessage.className = 'mt-3 text-lg font-medium text-green-600';
+                statusMessage.textContent = `${data.message} Present: ${data.present_count}, Absent: ${data.absent_count}`;
+                // Clear the local list display 
+                detectedList.innerHTML = '<li class="text-gray-500 italic">Session finalized. Start a new session.</li>';
+                detectedCount.textContent = '0';
+            } else {
+                statusMessage.className = 'mt-3 text-lg font-medium text-red-600';
+                statusMessage.textContent = `Error: ${data.error}`;
+            }
+
+        } catch (error) {
+            statusMessage.className = 'mt-3 text-lg font-medium text-red-600';
+            statusMessage.textContent = 'Network error during finalization.';
+        } finally {
+            finalizeBtn.disabled = false;
+        }
+    });
+
+    // --- Download Report ---
+    downloadBtn.addEventListener('click', () => {
+        statusMessage.textContent = 'Preparing download...';
+        // Trigger the file download endpoint
+        window.location.href = '/download_attendance';
+        statusMessage.textContent = 'Download initiated. Check your browser downloads.';
+    });
+    
+    // In a production system, we would poll for the list of detected students every few seconds.
+    // setInterval(updateDetectedStudents, 3000); 
+    // updateDetectedStudents(); 
+</script>
+{% endblock %}
