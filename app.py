@@ -526,4 +526,7 @@ def student_dashboard(roll_no):
 
 if __name__ == '__main__':
     if load_model():
-        app.run(debug=True)
+        # For production deployment (Render, Railway, etc.)
+        # Set debug=False and host='0.0.0.0'
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, debug=False)

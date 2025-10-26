@@ -3,51 +3,51 @@
 
 {% block content %}
 <!-- Hero Section -->
-<div class="text-center py-16 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-3xl shadow-2xl mb-12">
-    <h1 class="text-6xl font-extrabold mb-4">Welcome to Attendance Manager</h1>
-    <p class="text-xl mb-8 opacity-90">AI-Powered Face Recognition Attendance System</p>
-    <p class="text-lg max-w-3xl mx-auto mb-8">
+<div class="text-center py-8 md:py-16 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl md:rounded-3xl shadow-2xl mb-8 md:mb-12 px-4">
+    <h1 class="text-3xl md:text-6xl font-extrabold mb-3 md:mb-4">Welcome to Attendance Manager</h1>
+    <p class="text-base md:text-xl mb-4 md:mb-8 opacity-90">AI-Powered Face Recognition Attendance System</p>
+    <p class="text-sm md:text-lg max-w-3xl mx-auto mb-6 md:mb-8 px-2">
         Streamline your attendance tracking with cutting-edge facial recognition technology. 
         Automatic, accurate, and efficient attendance management for educational institutions.
     </p>
-    <div class="flex justify-center space-x-4">
-        <a href="/live_attendance" class="bg-white text-indigo-600 font-bold py-4 px-8 rounded-full hover:bg-gray-100 transition duration-300 shadow-lg transform hover:scale-105">
+    <div class="flex flex-col md:flex-row justify-center gap-3 md:space-x-4 px-4">
+        <a href="/live_attendance" class="bg-white text-indigo-600 font-bold py-3 md:py-4 px-6 md:px-8 rounded-full hover:bg-gray-100 transition duration-300 shadow-lg">
             🎥 Start Live Attendance
         </a>
-        <a href="/student_search" class="bg-indigo-800 text-white font-bold py-4 px-8 rounded-full hover:bg-indigo-900 transition duration-300 shadow-lg transform hover:scale-105">
+        <a href="/student_search" class="bg-indigo-800 text-white font-bold py-3 md:py-4 px-6 md:px-8 rounded-full hover:bg-indigo-900 transition duration-300 shadow-lg">
             🔍 Search Students
         </a>
     </div>
 </div>
 
 <!-- Features Section -->
-<div class="mb-12">
-    <h2 class="text-4xl font-bold text-gray-800 text-center mb-10">Key Features</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<div class="mb-8 md:mb-12">
+    <h2 class="text-2xl md:text-4xl font-bold text-gray-800 text-center mb-6 md:mb-10">Key Features</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
         
         <!-- Feature 1 -->
-        <div class="bg-white p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 border-indigo-500 transform hover:-translate-y-2">
-            <div class="text-5xl mb-4 text-center">🎯</div>
-            <h3 class="text-2xl font-bold text-gray-800 mb-3 text-center">Real-Time Recognition</h3>
-            <p class="text-gray-600 text-center">
+        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 border-indigo-500">
+            <div class="text-4xl md:text-5xl mb-3 md:mb-4 text-center">🎯</div>
+            <h3 class="text-xl md:text-2xl font-bold text-gray-800 mb-2 md:mb-3 text-center">Real-Time Recognition</h3>
+            <p class="text-sm md:text-base text-gray-600 text-center">
                 Advanced AI instantly identifies students through live camera feed with high accuracy and speed.
             </p>
         </div>
 
         <!-- Feature 2 -->
-        <div class="bg-white p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 border-purple-500 transform hover:-translate-y-2">
-            <div class="text-5xl mb-4 text-center">📊</div>
-            <h3 class="text-2xl font-bold text-gray-800 mb-3 text-center">Automated Reports</h3>
-            <p class="text-gray-600 text-center">
+        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 border-purple-500">
+            <div class="text-4xl md:text-5xl mb-3 md:mb-4 text-center">📊</div>
+            <h3 class="text-xl md:text-2xl font-bold text-gray-800 mb-2 md:mb-3 text-center">Automated Reports</h3>
+            <p class="text-sm md:text-base text-gray-600 text-center">
                 Generate comprehensive attendance reports with a single click. Download daily or complete history.
             </p>
         </div>
 
         <!-- Feature 3 -->
-        <div class="bg-white p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 border-pink-500 transform hover:-translate-y-2">
-            <div class="text-5xl mb-4 text-center">🔒</div>
-            <h3 class="text-2xl font-bold text-gray-800 mb-3 text-center">Secure & Cloud-Based</h3>
-            <p class="text-gray-600 text-center">
+        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-t-4 border-pink-500">
+            <div class="text-4xl md:text-5xl mb-3 md:mb-4 text-center">🔒</div>
+            <h3 class="text-xl md:text-2xl font-bold text-gray-800 mb-2 md:mb-3 text-center">Secure & Cloud-Based</h3>
+            <p class="text-sm md:text-base text-gray-600 text-center">
                 All data securely stored in cloud database with real-time synchronization and backup.
             </p>
         </div>
@@ -56,74 +56,74 @@
 </div>
 
 <!-- Stats Section -->
-<div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-12 rounded-3xl shadow-xl mb-12">
-    <h2 class="text-4xl font-bold text-gray-800 text-center mb-10">System Overview</h2>
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+<div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 md:p-12 rounded-2xl md:rounded-3xl shadow-xl mb-8 md:mb-12">
+    <h2 class="text-2xl md:text-4xl font-bold text-gray-800 text-center mb-6 md:mb-10">System Overview</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
         
-        <div class="bg-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition duration-300">
-            <div class="text-5xl font-extrabold text-indigo-600 mb-2">24</div>
-            <p class="text-gray-600 font-semibold">Face Encodings</p>
+        <div class="bg-white p-4 md:p-6 rounded-xl shadow-md text-center">
+            <div class="text-3xl md:text-5xl font-extrabold text-indigo-600 mb-1 md:mb-2">24</div>
+            <p class="text-xs md:text-base text-gray-600 font-semibold">Face Encodings</p>
         </div>
 
-        <div class="bg-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition duration-300">
-            <div class="text-5xl font-extrabold text-purple-600 mb-2">4</div>
-            <p class="text-gray-600 font-semibold">Registered Students</p>
+        <div class="bg-white p-4 md:p-6 rounded-xl shadow-md text-center">
+            <div class="text-3xl md:text-5xl font-extrabold text-purple-600 mb-1 md:mb-2">4</div>
+            <p class="text-xs md:text-base text-gray-600 font-semibold">Registered Students</p>
         </div>
 
-        <div class="bg-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition duration-300">
-            <div class="text-5xl font-extrabold text-pink-600 mb-2">99%</div>
-            <p class="text-gray-600 font-semibold">Recognition Accuracy</p>
+        <div class="bg-white p-4 md:p-6 rounded-xl shadow-md text-center">
+            <div class="text-3xl md:text-5xl font-extrabold text-pink-600 mb-1 md:mb-2">99%</div>
+            <p class="text-xs md:text-base text-gray-600 font-semibold">Recognition Accuracy</p>
         </div>
 
-        <div class="bg-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition duration-300">
-            <div class="text-5xl font-extrabold text-blue-600 mb-2">⚡</div>
-            <p class="text-gray-600 font-semibold">Instant Processing</p>
+        <div class="bg-white p-4 md:p-6 rounded-xl shadow-md text-center">
+            <div class="text-3xl md:text-5xl font-extrabold text-blue-600 mb-1 md:mb-2">⚡</div>
+            <p class="text-xs md:text-base text-gray-600 font-semibold">Instant Processing</p>
         </div>
 
     </div>
 </div>
 
 <!-- Quick Actions -->
-<div class="mb-12">
-    <h2 class="text-4xl font-bold text-gray-800 text-center mb-10">Quick Actions</h2>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="mb-8 md:mb-12">
+    <h2 class="text-2xl md:text-4xl font-bold text-gray-800 text-center mb-6 md:mb-10">Quick Actions</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         
-        <a href="/live_attendance" class="bg-white p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-l-4 border-green-500 transform hover:scale-105">
-            <div class="flex items-center space-x-4">
-                <div class="text-6xl">📹</div>
+        <a href="/live_attendance" class="bg-white p-6 md:p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-l-4 border-green-500">
+            <div class="flex items-center space-x-3 md:space-x-4">
+                <div class="text-4xl md:text-6xl">📹</div>
                 <div>
-                    <h3 class="text-2xl font-bold text-gray-800 mb-2">Live Attendance Session</h3>
-                    <p class="text-gray-600">Start a new attendance session with real-time face detection</p>
+                    <h3 class="text-lg md:text-2xl font-bold text-gray-800 mb-1 md:mb-2">Live Attendance Session</h3>
+                    <p class="text-sm md:text-base text-gray-600">Start a new attendance session with real-time face detection</p>
                 </div>
             </div>
         </a>
 
-        <a href="/download_total_attendance" class="bg-white p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-l-4 border-blue-500 transform hover:scale-105">
-            <div class="flex items-center space-x-4">
-                <div class="text-6xl">📥</div>
+        <a href="/download_total_attendance" class="bg-white p-6 md:p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-l-4 border-blue-500">
+            <div class="flex items-center space-x-3 md:space-x-4">
+                <div class="text-4xl md:text-6xl">📥</div>
                 <div>
-                    <h3 class="text-2xl font-bold text-gray-800 mb-2">Download Reports</h3>
-                    <p class="text-gray-600">Export complete attendance records for all students</p>
+                    <h3 class="text-lg md:text-2xl font-bold text-gray-800 mb-1 md:mb-2">Download Reports</h3>
+                    <p class="text-sm md:text-base text-gray-600">Export complete attendance records for all students</p>
                 </div>
             </div>
         </a>
 
-        <a href="/student_search" class="bg-white p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-l-4 border-purple-500 transform hover:scale-105">
-            <div class="flex items-center space-x-4">
-                <div class="text-6xl">🔍</div>
+        <a href="/student_search" class="bg-white p-6 md:p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 border-l-4 border-purple-500">
+            <div class="flex items-center space-x-3 md:space-x-4">
+                <div class="text-4xl md:text-6xl">🔍</div>
                 <div>
-                    <h3 class="text-2xl font-bold text-gray-800 mb-2">Student Search</h3>
-                    <p class="text-gray-600">Search for individual student attendance records</p>
+                    <h3 class="text-lg md:text-2xl font-bold text-gray-800 mb-1 md:mb-2">Student Search</h3>
+                    <p class="text-sm md:text-base text-gray-600">Search for individual student attendance records</p>
                 </div>
             </div>
         </a>
 
-        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 transform hover:scale-105 text-white">
-            <div class="flex items-center space-x-4">
-                <div class="text-6xl">💡</div>
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 md:p-8 rounded-2xl shadow-xl hover:shadow-2xl transition duration-300 text-white">
+            <div class="flex items-center space-x-3 md:space-x-4">
+                <div class="text-4xl md:text-6xl">💡</div>
                 <div>
-                    <h3 class="text-2xl font-bold mb-2">How It Works</h3>
-                    <p class="opacity-90">Camera → Face Detection → AI Recognition → Auto Save</p>
+                    <h3 class="text-lg md:text-2xl font-bold mb-1 md:mb-2">How It Works</h3>
+                    <p class="text-sm md:text-base opacity-90">Camera → Face Detection → AI Recognition → Auto Save</p>
                 </div>
             </div>
         </div>
@@ -132,12 +132,12 @@
 </div>
 
 <!-- Footer Info -->
-<div class="text-center py-8 bg-gray-100 rounded-2xl">
-    <p class="text-gray-600 text-lg">
+<div class="text-center py-6 md:py-8 bg-gray-100 rounded-2xl">
+    <p class="text-sm md:text-lg text-gray-600 px-4">
         Powered by <span class="font-bold text-indigo-600">Face Recognition AI</span> | 
         Built with <span class="font-bold text-purple-600">Flask & Supabase</span>
     </p>
-    <p class="text-gray-500 text-sm mt-2">
+    <p class="text-xs md:text-sm text-gray-500 mt-2">
         College Attendance Management System © 2025
     </p>
 </div>

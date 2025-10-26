@@ -2,13 +2,13 @@
 {% block title %}Student Dashboard{% endblock %}
 
 {% block content %}
-<h1 class="text-3xl font-bold text-gray-800 mb-6">Student Search and Dashboard</h1>
+<h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-4 md:mb-6">Student Search and Dashboard</h1>
 
-<div class="bg-white p-6 rounded-lg shadow-xl mb-8">
-    <div class="flex space-x-2">
+<div class="bg-white p-4 md:p-6 rounded-lg shadow-xl mb-6 md:mb-8">
+    <div class="flex flex-col md:flex-row gap-2 md:space-x-2">
         <input type="text" id="search-input" placeholder="Search by Roll No or Name..."
-               class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
-        <button id="search-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg">
+               class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-sm md:text-base">
+        <button id="search-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg w-full md:w-auto">
             Search
         </button>
     </div>
@@ -20,8 +20,8 @@
 </div>
 
 <!-- Student Dashboard Display Area -->
-<div id="dashboard-area" class="mt-8">
-    <p class="text-gray-500 text-center" id="dashboard-placeholder">Use the search bar to find a student.</p>
+<div id="dashboard-area" class="mt-6 md:mt-8">
+    <p class="text-gray-500 text-center text-sm md:text-base" id="dashboard-placeholder">Use the search bar to find a student.</p>
     <!-- Dashboard content will be loaded dynamically -->
 </div>
 
