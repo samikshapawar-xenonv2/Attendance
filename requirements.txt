@@ -4,7 +4,7 @@ flask-cors==5.0.0
 gunicorn==23.0.0
 
 # Database
-supabase==2.13.1
+supabase==2.22.2
 
 # Machine Learning & Computer Vision
 opencv-python==4.10.0.84
