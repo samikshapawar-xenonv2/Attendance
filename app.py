@@ -32,6 +32,17 @@ KNOWN_FACE_IDS = [] # Format: 'RollNo_Name'
 # Global variables for real-time attendance tracking
 CURRENT_SESSION_ATTENDANCE = {} # Tracks detected students for the current session: {RollNo: Name}
 
+# Improved accuracy configuration
+FACE_RECOGNITION_TOLERANCE = 0.45  # Lower = more strict (default 0.6). Range: 0.0-1.0
+CONFIDENCE_THRESHOLD = 0.55  # Minimum confidence (1 - distance) to accept match
+MIN_DETECTION_COUNT = 3  # Number of consecutive detections before marking attendance
+DETECTION_COUNTER = {}  # Track consecutive detections: {RollNo: count}
+
+# Performance optimization settings
+USE_CNN_MODEL = False  # Set to False for faster performance (use HOG instead of CNN)
+FRAME_RESIZE_SCALE = 0.25  # Resize frame to 25% for faster processing (was 0.5)
+PROCESS_EVERY_N_FRAMES = 3  # Process every 3rd frame instead of every 2nd
+
 # Load the face recognition model
 def load_model():
     """Loads the pre-trained face encodings from the pickle file."""
@@ -44,66 +55,132 @@ def load_model():
         data = pickle.load(f)
         KNOWN_FACE_ENCODINGS = data["encodings"]
         KNOWN_FACE_IDS = data["names"]
+    
     print(f"ML Model loaded successfully. {len(KNOWN_FACE_IDS)} students registered.")
+    print(f"Detection model: {'CNN (accurate, slower)' if USE_CNN_MODEL else 'HOG (fast, good accuracy)'}")
+    print(f"Recognition tolerance: {FACE_RECOGNITION_TOLERANCE}")
+    print(f"Confidence threshold: {CONFIDENCE_THRESHOLD}")
+    print(f"Min detection count: {MIN_DETECTION_COUNT}")
+    print(f"Frame resize scale: {FRAME_RESIZE_SCALE}")
+    print(f"Process every {PROCESS_EVERY_N_FRAMES} frames")
     return True
 
 # --- Face Recognition Core Logic (Generator Function for Video Stream) ---
 
 def generate_frames():
-    """Captures video, detects faces, and generates the video frame stream."""
+    """Captures video, detects faces, and generates the video frame stream with improved accuracy."""
     camera = cv2.VideoCapture(0) # 0 means default webcam
     if not camera.isOpened():
         print("Error: Could not open camera.")
         return
 
-    process_this_frame = True
+    # Set camera properties for better quality
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    camera.set(cv2.CAP_PROP_FPS, 30)
+    
+    # Optimize JPEG compression for faster streaming
+    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+    frame_count = 0
+    
+    # Determine face detection model based on setting
+    detection_model = 'cnn' if USE_CNN_MODEL else 'hog'
+    print(f"Using face detection model: {detection_model}")
 
     while True:
         success, frame = camera.read()
         if not success:
             break
         
-        # Optimize processing: only process every other frame
-        if process_this_frame:
+        frame_count += 1
+        
+        # Process frames at regular intervals for speed
+        if frame_count % PROCESS_EVERY_N_FRAMES == 0:
+            # Resize frame for faster processing
+            small_frame = cv2.resize(frame, (0, 0), fx=FRAME_RESIZE_SCALE, fy=FRAME_RESIZE_SCALE)
+            
             # Convert the image from BGR color (OpenCV) to RGB color (face_recognition)
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
             
             # Find all the faces and face encodings in the current frame
-            face_locations = face_recognition.face_locations(rgb_frame)
-            face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+            # Using HOG model for speed or CNN for accuracy
+            face_locations = face_recognition.face_locations(rgb_frame, model=detection_model)
+            face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
 
-            current_session_detected = []
+            detected_in_frame = set()
+            
+            # Calculate scale factor for face locations
+            scale_factor = int(1 / FRAME_RESIZE_SCALE)
             
             for face_encoding, (top, right, bottom, left) in zip(face_encodings, face_locations):
-                # Check if the face matches any known face
-                matches = face_recognition.compare_faces(KNOWN_FACE_ENCODINGS, face_encoding)
+                # Scale back up face locations since frame was scaled down
+                top *= scale_factor
+                right *= scale_factor
+                bottom *= scale_factor
+                left *= scale_factor
+                
+                # Check if the face matches any known face with custom tolerance
+                matches = face_recognition.compare_faces(
+                    KNOWN_FACE_ENCODINGS, 
+                    face_encoding,
+                    tolerance=FACE_RECOGNITION_TOLERANCE
+                )
                 name = "Unknown"
+                confidence = 0.0
+                roll_no = None
 
                 # Use the known face with the smallest distance to the new face
                 face_distances = face_recognition.face_distance(KNOWN_FACE_ENCODINGS, face_encoding)
                 best_match_index = np.argmin(face_distances)
+                best_distance = face_distances[best_match_index]
                 
-                if matches[best_match_index]:
+                # Calculate confidence (1 - distance)
+                confidence = 1 - best_distance
+                
+                # Only accept if match is found AND confidence is above threshold
+                if matches[best_match_index] and confidence >= CONFIDENCE_THRESHOLD:
                     # Extract the RollNo and Name
                     full_id = KNOWN_FACE_IDS[best_match_index]
                     roll_no, student_name = full_id.split('_', 1)
-                    name = student_name.replace(' ', '_')
+                    name = student_name.replace('_', ' ')
                     
-                    # Mark the student as detected for this session
-                    if roll_no not in CURRENT_SESSION_ATTENDANCE:
-                        CURRENT_SESSION_ATTENDANCE[roll_no] = student_name.replace('_', ' ')
-                        print(f"Attendance marked for: {student_name} (Roll {roll_no})")
+                    detected_in_frame.add(roll_no)
+                    
+                    # Increment detection counter for consecutive detection
+                    if roll_no not in DETECTION_COUNTER:
+                        DETECTION_COUNTER[roll_no] = 0
+                    DETECTION_COUNTER[roll_no] += 1
+                    
+                    # Mark attendance only after MIN_DETECTION_COUNT consecutive detections
+                    if roll_no not in CURRENT_SESSION_ATTENDANCE and DETECTION_COUNTER[roll_no] >= MIN_DETECTION_COUNT:
+                        CURRENT_SESSION_ATTENDANCE[roll_no] = name
+                        print(f"✓ Attendance marked for: {name} (Roll {roll_no}) - Confidence: {confidence:.2%}")
+                    
+                    # Display with confidence
+                    display_name = f"{name} ({confidence:.0%})"
+                    color = (0, 255, 0)  # Green for recognized
+                else:
+                    display_name = f"Unknown ({confidence:.0%})"
+                    color = (0, 0, 255)  # Red for unknown
                 
                 # Draw box and label on the frame
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
+                cv2.rectangle(frame, (left, top), (right, bottom), color, 2)
+                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), color, cv2.FILLED)
                 font = cv2.FONT_HERSHEY_DUPLEX
-                cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+                cv2.putText(frame, display_name, (left + 6, bottom - 6), font, 0.5, (255, 255, 255), 1)
+            
+            # Reset counter for students not detected in this frame
+            for roll in list(DETECTION_COUNTER.keys()):
+                if roll not in detected_in_frame:
+                    DETECTION_COUNTER[roll] = 0
 
-        process_this_frame = not process_this_frame
+        # Add status text to frame
+        status_text = f"Detected: {len(CURRENT_SESSION_ATTENDANCE)} students"
+        cv2.putText(frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-        # Encode the frame as a JPEG image
-        ret, buffer = cv2.imencode('.jpg', frame)
+        # Encode the frame as a JPEG image with higher compression for faster streaming
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
         frame = buffer.tobytes()
 
         # Yield the frame in response stream
@@ -143,6 +220,8 @@ def finalize_attendance():
     Students not detected will be marked 'Absent' after cross-referencing the roster.
     Automatically detects the lecture number for today.
     """
+    global DETECTION_COUNTER
+    
     current_date = datetime.now().strftime('%Y-%m-%d')
     current_time = datetime.now().strftime('%H:%M:%S')
 
@@ -199,8 +278,10 @@ def finalize_attendance():
     # 4. Insert all records into the attendance table
     try:
         response = supabase.table('attendance').insert(attendance_data_to_insert).execute()
-        # Reset the session attendance tracker
+        
+        # Reset the session attendance tracker and detection counter
         CURRENT_SESSION_ATTENDANCE.clear()
+        DETECTION_COUNTER.clear()
         
         return jsonify({
             "message": f"Attendance for Lecture {lecture_number} finalized and saved successfully.",
