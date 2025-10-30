@@ -497,6 +497,167 @@ def download_total_attendance():
         return jsonify({"error": f"Failed to generate total attendance report: {str(e)}"}), 500
 
 
+@app.route('/download_student_attendance/<int:roll_no>', methods=['GET'])
+def download_student_attendance(roll_no):
+    """
+    Downloads attendance report for a specific student in Excel format.
+    Includes lecture-wise, day-wise, and overall statistics.
+    """
+    try:
+        # Get student info
+        student_response = supabase.table('students').select('name').eq('roll_no', roll_no).single().execute()
+        student_name = student_response.data['name']
+        
+        # Get all attendance records for this student
+        attendance_response = supabase.table('attendance').select('date, time, status, lecture_number').eq('roll_no', roll_no).order('date, lecture_number', desc=False).execute()
+        attendance_data = attendance_response.data
+        
+        if not attendance_data:
+            return jsonify({"error": "No attendance records found for this student"}), 404
+        
+        # Create DataFrame
+        df = pd.DataFrame(attendance_data)
+        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+        
+        # Calculate statistics
+        total_records = len(df)
+        present_records = len(df[df['status'] == 'Present'])
+        absent_records = len(df[df['status'] == 'Absent'])
+        overall_percentage = round((present_records / total_records) * 100, 2) if total_records > 0 else 0
+        
+        # Calculate lecture-wise stats
+        total_lectures = len(df)
+        attended_lectures = present_records
+        lecture_percentage = round((attended_lectures / total_lectures) * 100, 2) if total_lectures > 0 else 0
+        
+        # Calculate day-wise stats
+        df_sorted = df.sort_values(['date', 'lecture_number'])
+        first_lectures = df_sorted.groupby('date').first().reset_index()
+        present_days = len(first_lectures[first_lectures['status'] == 'Present'])
+        total_days = len(first_lectures)
+        day_percentage = round((present_days / total_days) * 100, 2) if total_days > 0 else 0
+        
+        # Create Excel file with structure: lectures as rows, dates as columns
+        output_filename = f"Attendance_{student_name.replace(' ', '_')}_Roll{roll_no}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        output_path = os.path.join(os.getcwd(), output_filename)
+        
+        # Prepare data for horizontal structure (dates as columns, lectures as rows)
+        df_sorted = df.sort_values(['date', 'lecture_number'])
+        
+        # Get unique dates and lectures
+        unique_dates = sorted(df_sorted['date'].unique())
+        all_lecture_numbers = sorted(df_sorted['lecture_number'].unique())
+        
+        # Create Excel workbook
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Attendance Sheet"
+        
+        # Styling
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+        header_font = Font(color='FFFFFF', bold=True, size=11)
+        center_alignment = Alignment(horizontal='center', vertical='center')
+        left_alignment = Alignment(horizontal='left', vertical='center')
+        
+        present_fill = PatternFill(start_color='92D050', end_color='92D050', fill_type='solid')
+        present_font = Font(color='000000', bold=True)
+        
+        absent_fill = PatternFill(start_color='FF6666', end_color='FF6666', fill_type='solid')
+        absent_font = Font(color='FFFFFF', bold=True)
+        
+        light_blue_fill = PatternFill(start_color='D9E2F3', end_color='D9E2F3', fill_type='solid')
+        
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Set column widths
+        ws.column_dimensions['A'].width = 10
+        ws.column_dimensions['B'].width = 18
+        
+        # Row 1: Headers - RollNo | Student Name | Date1 | Date2 | ...
+        ws['A1'] = 'RollNo'
+        ws['A1'].fill = header_fill
+        ws['A1'].font = header_font
+        ws['A1'].alignment = center_alignment
+        ws['A1'].border = thin_border
+        
+        ws['B1'] = student_name
+        ws['B1'].fill = header_fill
+        ws['B1'].font = header_font
+        ws['B1'].alignment = center_alignment
+        ws['B1'].border = thin_border
+        
+        # Write date headers starting from column C
+        for col_idx, date in enumerate(unique_dates, start=3):
+            col_letter = get_column_letter(col_idx)
+            ws[f'{col_letter}1'] = date
+            ws[f'{col_letter}1'].fill = header_fill
+            ws[f'{col_letter}1'].font = header_font
+            ws[f'{col_letter}1'].alignment = center_alignment
+            ws[f'{col_letter}1'].border = thin_border
+            ws.column_dimensions[col_letter].width = 12
+        
+        # Rows 2+: Each row represents a lecture
+        # Column A: Roll number, Column B: Lecture label, Columns C+: Status for each date
+        for row_idx, lecture_num in enumerate(all_lecture_numbers, start=2):
+            # Column A: Roll number
+            ws[f'A{row_idx}'] = roll_no
+            ws[f'A{row_idx}'].alignment = center_alignment
+            ws[f'A{row_idx}'].border = thin_border
+            ws[f'A{row_idx}'].fill = light_blue_fill
+            
+            # Column B: Lecture label
+            ws[f'B{row_idx}'] = f"Lecture {lecture_num}"
+            ws[f'B{row_idx}'].alignment = left_alignment
+            ws[f'B{row_idx}'].border = thin_border
+            ws[f'B{row_idx}'].fill = light_blue_fill
+            
+            # Columns C+: Status for each date
+            for col_idx, date in enumerate(unique_dates, start=3):
+                col_letter = get_column_letter(col_idx)
+                
+                # Find the status for this lecture on this date
+                matching_records = df_sorted[
+                    (df_sorted['date'] == date) & 
+                    (df_sorted['lecture_number'] == lecture_num)
+                ]
+                
+                if not matching_records.empty:
+                    status = matching_records.iloc[0]['status']
+                    ws[f'{col_letter}{row_idx}'] = status
+                    ws[f'{col_letter}{row_idx}'].alignment = center_alignment
+                    ws[f'{col_letter}{row_idx}'].border = thin_border
+                    
+                    # Color code based on status
+                    if status == 'Present':
+                        ws[f'{col_letter}{row_idx}'].fill = present_fill
+                        ws[f'{col_letter}{row_idx}'].font = present_font
+                    else:
+                        ws[f'{col_letter}{row_idx}'].fill = absent_fill
+                        ws[f'{col_letter}{row_idx}'].font = absent_font
+                else:
+                    # No record for this lecture on this date
+                    ws[f'{col_letter}{row_idx}'] = ''
+                    ws[f'{col_letter}{row_idx}'].border = thin_border
+        
+        # Save workbook
+        wb.save(output_path)
+        
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
+    
+    except Exception as e:
+        print(f"Error generating student attendance report: {e}")
+        return jsonify({"error": f"Failed to generate student report: {str(e)}"}), 500
+
+
 # --- Student Dashboard API (Search and Analytics) ---
 
 @app.route('/api/search_student', methods=['GET'])
@@ -531,51 +692,86 @@ def search_student():
 @app.route('/api/student_dashboard/<int:roll_no>', methods=['GET'])
 def student_dashboard(roll_no):
     """
-    Provides attendance analytics for a single student.
+    Provides attendance analytics for a single student including:
+    - Overall lecture-wise attendance
+    - Day-wise attendance (present if attended first lecture of the day)
+    - Monthly breakdown
     """
     today = datetime.now()
-    
-    # Calculate date ranges
-    # 1. Current Month
-    start_of_month = today.replace(day=1).strftime('%Y-%m-%d')
-    end_of_month = today.strftime('%Y-%m-%d')
-
-    # 2. Last Month (Simple approximation)
-    last_month_start = (today.replace(day=1) - pd.DateOffset(months=1)).strftime('%Y-%m-%d')
-    last_month_end = (today.replace(day=1) - pd.DateOffset(days=1)).strftime('%Y-%m-%d')
-    
-    # 3. Overall
     
     try:
         # Step 1: Get Student Name
         student_response = supabase.table('students').select('name').eq('roll_no', roll_no).single().execute()
         student_name = student_response.data['name']
         
-        # Step 2: Get ALL Attendance Records for the student
-        attendance_response = supabase.table('attendance').select('date, status').eq('roll_no', roll_no).order('date', desc=True).execute()
+        # Step 2: Get ALL Attendance Records for the student (with lecture numbers)
+        attendance_response = supabase.table('attendance').select('date, status, lecture_number').eq('roll_no', roll_no).order('date, lecture_number', desc=False).execute()
         attendance_data = attendance_response.data
+        
+        # Step 3: Get TOTAL lectures conducted (all students, all dates)
+        total_lectures_response = supabase.table('attendance').select('date, lecture_number').execute()
+        all_lectures = total_lectures_response.data
         
         if not attendance_data:
              return jsonify({
                 "student_name": student_name,
+                "roll_no": roll_no,
+                "lecture_wise_stats": {
+                    "attended_lectures": 0,
+                    "total_lectures": len(set([(r['date'], r['lecture_number']) for r in all_lectures])) if all_lectures else 0,
+                    "percentage": 0
+                },
+                "day_wise_stats": {
+                    "present_days": 0,
+                    "total_days": 0,
+                    "percentage": 0
+                },
+                "overall_stats": {
+                    "total_days": 0,
+                    "present_days": 0,
+                    "percentage": 0
+                },
                 "monthly_stats": [],
-                "overall_percentage": 0,
                 "message": "No historical attendance data available."
             }), 200
 
         df_att = pd.DataFrame(attendance_data)
         df_att['date'] = pd.to_datetime(df_att['date'])
         
+        # === LECTURE-WISE ATTENDANCE ===
+        # Count total unique lectures conducted (across all students)
+        total_unique_lectures = len(set([(r['date'], r['lecture_number']) for r in all_lectures]))
+        
+        # Count lectures attended by this student (status = Present)
+        attended_lectures = len(df_att[df_att['status'] == 'Present'])
+        
+        lecture_wise_percentage = round((attended_lectures / total_unique_lectures) * 100, 2) if total_unique_lectures > 0 else 0
+        
+        # === DAY-WISE ATTENDANCE ===
+        # Rule: Student is present for the day if they attended the FIRST lecture (lecture_number = 1)
+        df_att_sorted = df_att.sort_values(['date', 'lecture_number'])
+        
+        # Get first lecture of each day for this student
+        first_lectures = df_att_sorted.groupby('date').first().reset_index()
+        
+        # Count days where first lecture was attended
+        present_days = len(first_lectures[first_lectures['status'] == 'Present'])
+        
+        # Total unique days with lectures (from all students)
+        total_unique_days = len(set([r['date'] for r in all_lectures]))
+        
+        day_wise_percentage = round((present_days / total_unique_days) * 100, 2) if total_unique_days > 0 else 0
+        
+        # === OVERALL STATS (Legacy - based on all attendance records) ===
         def calculate_stats(df):
-            total_days = len(df)
-            present_days = len(df[df['status'] == 'Present'])
-            percentage = round((present_days / total_days) * 100, 2) if total_days > 0 else 0
-            return total_days, present_days, percentage
+            total_records = len(df)
+            present_records = len(df[df['status'] == 'Present'])
+            percentage = round((present_records / total_records) * 100, 2) if total_records > 0 else 0
+            return total_records, present_records, percentage
 
-        # Overall Stats
         overall_total, overall_present, overall_percentage = calculate_stats(df_att)
         
-        # Monthly Stats (Grouping by Month-Year)
+        # === MONTHLY STATS ===
         df_att['month_year'] = df_att['date'].dt.to_period('M')
         monthly_groups = df_att.groupby('month_year').apply(calculate_stats).reset_index()
         monthly_stats = []
@@ -591,7 +787,16 @@ def student_dashboard(roll_no):
         return jsonify({
             "roll_no": roll_no,
             "student_name": student_name,
-            "attendance_history": attendance_data,
+            "lecture_wise_stats": {
+                "attended_lectures": attended_lectures,
+                "total_lectures": total_unique_lectures,
+                "percentage": lecture_wise_percentage
+            },
+            "day_wise_stats": {
+                "present_days": present_days,
+                "total_days": total_unique_days,
+                "percentage": day_wise_percentage
+            },
             "overall_stats": {
                 "total_days": overall_total,
                 "present_days": overall_present,
