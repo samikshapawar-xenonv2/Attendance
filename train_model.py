@@ -1,4 +1,5 @@
 import face_recognition
+import mediapipe as mp
 import numpy as np
 import pickle
 import os
@@ -11,8 +12,13 @@ DATASET_PATH = os.path.join(os.getcwd(), 'public')
 ENCODINGS_FILE = "face_encodings.pkl"
 
 # Improved accuracy settings
-FACE_DETECTION_MODEL = 'cnn'  # Use CNN model for better accuracy (slower but more accurate than 'hog')
+# Improved accuracy settings
 MIN_IMAGE_SIZE = 100  # Minimum face size to accept
+NUM_JITTERS = 10  # Number of times to re-sample face for better encoding (default is 1)
+
+# MediaPipe Setup
+mp_face_detection = mp.solutions.face_detection
+face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
 NUM_JITTERS = 10  # Number of times to re-sample face for better encoding (default is 1)
 
 def train_and_save_encodings(dataset_path, output_file):
@@ -26,7 +32,8 @@ def train_and_save_encodings(dataset_path, output_file):
     student_roster = []
 
     print(f"Scanning directory: {dataset_path}")
-    print(f"Using face detection model: {FACE_DETECTION_MODEL}")
+    print(f"Scanning directory: {dataset_path}")
+    print(f"Using face detection model: MediaPipe (High Performance)")
     print(f"Number of jitters for encoding: {NUM_JITTERS}")
     
     # Iterate through all student folders (e.g., '07_Samiksha_Pawar')
@@ -71,7 +78,28 @@ def train_and_save_encodings(dataset_path, output_file):
                             continue
                         
                         # Find faces using CNN model for better accuracy
-                        face_locations = face_recognition.face_locations(image, model=FACE_DETECTION_MODEL)
+                        # Find faces using MediaPipe for consistency
+                        height, width, _ = image.shape
+                        rgb_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR) # face_recognition loads as RGB, but cvtColor expects BGR if we treat it as such? 
+                        # Wait, face_recognition.load_image_file loads as RGB. MediaPipe expects RGB.
+                        # So we can pass image directly to MediaPipe?
+                        # Let's verify: face_recognition loads as RGB. MediaPipe process expects RGB.
+                        
+                        results = face_detection.process(image)
+                        face_locations = []
+                        
+                        if results.detections:
+                            for detection in results.detections:
+                                bboxC = detection.location_data.relative_bounding_box
+                                x = int(bboxC.xmin * width)
+                                y = int(bboxC.ymin * height)
+                                w = int(bboxC.width * width)
+                                h = int(bboxC.height * height)
+                                top = max(0, y)
+                                right = min(width, x + w)
+                                bottom = min(height, y + h)
+                                left = max(0, x)
+                                face_locations.append((top, right, bottom, left))
 
                         if len(face_locations) == 1:
                             # Generate the 128-dimension face encoding with multiple jitters

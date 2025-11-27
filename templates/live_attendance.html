@@ -11,6 +11,10 @@
         <img id="video_feed" src="{{ url_for('video_feed') }}" class="w-full rounded-lg border-2 md:border-4 border-gray-300" alt="Live Video Feed">
         
         <div class="mt-3 md:mt-4 flex flex-col sm:flex-row gap-2 sm:gap-3 md:space-x-4">
+            <button id="reset-btn" 
+                    class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 md:py-2 px-6 rounded-lg transition duration-150 text-sm sm:text-base w-full sm:w-auto">
+                Reset Session
+            </button>
             <button id="finalize-btn" 
                     class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 md:py-2 px-6 rounded-lg transition duration-150 text-sm sm:text-base w-full sm:w-auto">
                 Finalize & Save Attendance
@@ -36,22 +40,55 @@
     const detectedList = document.getElementById('detected-list');
     const detectedCount = document.getElementById('detected-count');
     const finalizeBtn = document.getElementById('finalize-btn');
+    const resetBtn = document.getElementById('reset-btn');
     const downloadBtn = document.getElementById('download-btn');
     const statusMessage = document.getElementById('status-message');
 
-    let currentAttendance = {}; // Local client-side mirror of detected students
-
     // --- Real-time detection update (Poll the backend for detected list) ---
-    function updateDetectedStudents() {
-        // Since the Flask backend stores CURRENT_SESSION_ATTENDANCE globally, 
-        // we need an API endpoint to fetch it.
-        // For simplicity, in this basic structure, the detection happens in the video feed generator.
-        // We will assume the backend updates the list internally and focus on the finalization steps.
-        
-        // --- NOTE: In a production app, we would use WebSockets or AJAX polling to update the list here ---
-        // For this streamlined solution, the teacher sees the name pop up on the video frame 
-        // and relies on the 'Finalize' button to confirm the saved list.
+    async function updateDetectedStudents() {
+        try {
+            const response = await fetch('/api/session/status');
+            if (!response.ok) return;
+            
+            const data = await response.json();
+            
+            // Update count
+            detectedCount.textContent = data.count;
+            
+            // Update list
+            if (data.count === 0) {
+                detectedList.innerHTML = '<li class="text-gray-500 italic">Start scanning to see detections...</li>';
+            } else {
+                // Sort by time (newest first)
+                const sortedStudents = data.students.sort((a, b) => b.time.localeCompare(a.time));
+                
+                detectedList.innerHTML = sortedStudents.map(student => `
+                    <li class="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
+                        <span class="font-medium text-gray-800">${student.name}</span>
+                        <span class="text-xs text-gray-500">Roll: ${student.roll_no} | ${student.time}</span>
+                    </li>
+                `).join('');
+            }
+        } catch (error) {
+            console.error("Error fetching session status:", error);
+        }
     }
+
+    // --- Reset Session ---
+    resetBtn.addEventListener('click', async () => {
+        if (!confirm("Are you sure you want to reset the current session? All detected students will be cleared.")) return;
+        
+        try {
+            const response = await fetch('/api/session/reset', { method: 'POST' });
+            if (response.ok) {
+                statusMessage.className = 'mt-3 text-lg font-medium text-blue-600';
+                statusMessage.textContent = 'Session reset successfully.';
+                updateDetectedStudents(); // Refresh list immediately
+            }
+        } catch (error) {
+            console.error("Error resetting session:", error);
+        }
+    });
 
     // --- Finalize Attendance ---
     finalizeBtn.addEventListener('click', async () => {
@@ -70,8 +107,7 @@
                 statusMessage.className = 'mt-3 text-lg font-medium text-green-600';
                 statusMessage.textContent = `${data.message} Present: ${data.present_count}, Absent: ${data.absent_count}`;
                 // Clear the local list display 
-                detectedList.innerHTML = '<li class="text-gray-500 italic">Session finalized. Start a new session.</li>';
-                detectedCount.textContent = '0';
+                updateDetectedStudents();
             } else {
                 statusMessage.className = 'mt-3 text-lg font-medium text-red-600';
                 statusMessage.textContent = `Error: ${data.error}`;
@@ -93,8 +129,8 @@
         statusMessage.textContent = 'Download initiated. Check your browser downloads.';
     });
     
-    // In a production system, we would poll for the list of detected students every few seconds.
-    // setInterval(updateDetectedStudents, 3000); 
-    // updateDetectedStudents(); 
+    // Poll for updates every 2 seconds
+    setInterval(updateDetectedStudents, 2000); 
+    updateDetectedStudents(); // Initial call
 </script>
 {% endblock %}

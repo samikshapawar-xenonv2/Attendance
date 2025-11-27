@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -11,17 +12,18 @@
         * {
             -webkit-tap-highlight-color: transparent;
         }
-        
+
         body {
             overflow-x: hidden;
         }
-        
+
         /* Ensure proper touch targets on mobile */
-        button, a {
+        button,
+        a {
             min-height: 44px;
             min-width: 44px;
         }
-        
+
         /* Mobile-friendly scrolling */
         @media (max-width: 768px) {
             .container {
@@ -31,14 +33,31 @@
         }
     </style>
 </head>
+
 <body class="bg-gray-100 min-h-screen">
     <nav class="bg-indigo-600 p-3 md:p-4 shadow-md sticky top-0 z-50">
         <div class="container mx-auto flex flex-col md:flex-row justify-between items-center gap-2 md:gap-0">
-            <a href="/" class="text-white text-xl sm:text-2xl md:text-2xl font-bold mb-2 md:mb-0">🎓 Attendance Manager</a>
+            <a href="/" class="text-white text-xl sm:text-2xl md:text-2xl font-bold mb-2 md:mb-0">🎓 Attendance
+                Manager</a>
             <div class="flex flex-col sm:flex-row gap-2 sm:gap-2 md:space-x-4 w-full sm:w-auto md:w-auto">
-                <a href="/live_attendance" class="text-white hover:text-indigo-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-indigo-700 md:bg-transparent hover:bg-indigo-800 md:hover:bg-transparent transition">📹 Live Attendance</a>
-                <a href="/student_search" class="text-white hover:text-indigo-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-indigo-700 md:bg-transparent hover:bg-indigo-800 md:hover:bg-transparent transition">🔍 Student Search</a>
-                <a href="/download_total_attendance" class="text-white hover:text-indigo-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-indigo-700 md:bg-transparent hover:bg-indigo-800 md:hover:bg-transparent transition">📥 Download Report</a>
+                <a href="/live_attendance"
+                    class="text-white hover:text-indigo-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-indigo-700 md:bg-transparent hover:bg-indigo-800 md:hover:bg-transparent transition">📹
+                    Live Attendance</a>
+                <a href="/student_search"
+                    class="text-white hover:text-indigo-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-indigo-700 md:bg-transparent hover:bg-indigo-800 md:hover:bg-transparent transition">🔍
+                    Student Search</a>
+                <a href="/download_total_attendance"
+                    class="text-white hover:text-indigo-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-indigo-700 md:bg-transparent hover:bg-indigo-800 md:hover:bg-transparent transition">📥
+                    Download Report</a>
+                {% if session.get('logged_in') %}
+                <a href="/logout"
+                    class="text-white hover:text-red-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-red-600 md:bg-transparent hover:bg-red-700 md:hover:bg-transparent transition font-semibold">🚪
+                    Logout</a>
+                {% else %}
+                <a href="/login"
+                    class="text-white hover:text-indigo-200 text-center text-sm sm:text-base py-2 px-3 rounded md:rounded-none bg-indigo-800 md:bg-transparent hover:bg-indigo-900 md:hover:bg-transparent transition font-semibold">🔐
+                    Login</a>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -46,4 +65,5 @@
         {% block content %}{% endblock %}
     </main>
 </body>
+
 </html>

@@ -3,7 +3,8 @@ import pickle
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from flask import Flask, render_template, Response, request, jsonify, send_file
+from flask import Flask, render_template, Response, request, jsonify, send_file, session, redirect, url_for
+from functools import wraps
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -17,6 +18,13 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app) # Allow cross-origin requests, useful for development
 
+# Session & security configuration
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "attendance-secret-key")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax'
+)
+
 # Load Supabase Credentials
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -25,12 +33,38 @@ ENCODINGS_FILE = os.getenv("ENCODINGS_FILE")
 # Supabase Client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Admin credentials (use environment variables in production)
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "amardighe16@gmail.com").lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "hxhn zzax rkxg qzvw")
+
 # Global variables for ML Model
 KNOWN_FACE_ENCODINGS = []
 KNOWN_FACE_IDS = [] # Format: 'RollNo_Name'
 
-# Global variables for real-time attendance tracking
-CURRENT_SESSION_ATTENDANCE = {} # Tracks detected students for the current session: {RollNo: Name}
+# --- Attendance Session Management ---
+class AttendanceSession:
+    def __init__(self):
+        self.detected_students = {} # {roll_no: {'name': name, 'time': timestamp}}
+
+    def add(self, roll_no, name):
+        if roll_no not in self.detected_students:
+            self.detected_students[roll_no] = {
+                'name': name,
+                'time': datetime.now().strftime('%H:%M:%S')
+            }
+            print(f"✓ Added to session: {name} (Roll {roll_no})")
+    
+    def get_all(self):
+        return self.detected_students
+    
+    def reset(self):
+        self.detected_students = {}
+        
+    def count(self):
+        return len(self.detected_students)
+
+# Global instance
+attendance_session = AttendanceSession()
 
 # Improved accuracy configuration
 FACE_RECOGNITION_TOLERANCE = 0.45  # Lower = more strict (default 0.6). Range: 0.0-1.0
@@ -42,6 +76,36 @@ DETECTION_COUNTER = {}  # Track consecutive detections: {RollNo: count}
 USE_CNN_MODEL = False  # Set to False for faster performance (use HOG instead of CNN)
 FRAME_RESIZE_SCALE = 0.25  # Resize frame to 25% for faster processing (was 0.5)
 PROCESS_EVERY_N_FRAMES = 3  # Process every 3rd frame instead of every 2nd
+
+
+def is_authenticated() -> bool:
+    """Returns True when the current session is logged in."""
+    return session.get('user_email') is not None
+
+
+def authenticate_user(email: str, password: str) -> bool:
+    """Validates credentials against the configured admin account."""
+    if not email or not password:
+        return False
+    return email.strip().lower() == ADMIN_EMAIL and password.strip() == ADMIN_PASSWORD
+
+
+def login_required(view_func):
+    """Decorator to protect routes that require authentication."""
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if is_authenticated():
+            return view_func(*args, **kwargs)
+
+        # If the request expects JSON (e.g., fetch), return 401 instead of redirecting
+        if request.is_json or request.accept_mimetypes.best == 'application/json':
+            return jsonify({"error": "Authentication required"}), 401
+
+        next_url = request.url if request.method == 'GET' else request.referrer
+        return redirect(url_for('login', next=next_url))
+
+    return wrapper
 
 # Load the face recognition model
 def load_model():
@@ -153,8 +217,9 @@ def generate_frames():
                     DETECTION_COUNTER[roll_no] += 1
                     
                     # Mark attendance only after MIN_DETECTION_COUNT consecutive detections
-                    if roll_no not in CURRENT_SESSION_ATTENDANCE and DETECTION_COUNTER[roll_no] >= MIN_DETECTION_COUNT:
-                        CURRENT_SESSION_ATTENDANCE[roll_no] = name
+                    # Check if student is already in the session to avoid redundant processing
+                    if roll_no not in attendance_session.get_all() and DETECTION_COUNTER[roll_no] >= MIN_DETECTION_COUNT:
+                        attendance_session.add(roll_no, name)
                         print(f"✓ Attendance marked for: {name} (Roll {roll_no}) - Confidence: {confidence:.2%}")
                     
                     # Display with confidence
@@ -176,7 +241,7 @@ def generate_frames():
                     DETECTION_COUNTER[roll] = 0
 
         # Add status text to frame
-        status_text = f"Detected: {len(CURRENT_SESSION_ATTENDANCE)} students"
+        status_text = f"Detected: {attendance_session.count()} students"
         cv2.putText(frame, status_text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
         # Encode the frame as a JPEG image with higher compression for faster streaming
@@ -211,6 +276,27 @@ def live_attendance():
 def video_feed():
     """Endpoint for the streaming video feed."""
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/api/session/status', methods=['GET'])
+def session_status():
+    """Returns the current list of detected students in the active session."""
+    return jsonify({
+        "count": attendance_session.count(),
+        "students": [
+            {"roll_no": k, "name": v['name'], "time": v['time']} 
+            for k, v in attendance_session.get_all().items()
+        ]
+    })
+
+
+@app.route('/api/session/reset', methods=['POST'])
+def reset_session():
+    """Resets the current attendance session."""
+    attendance_session.reset()
+    global DETECTION_COUNTER
+    DETECTION_COUNTER.clear()
+    return jsonify({"message": "Session reset successfully"})
 
 
 @app.route('/finalize_attendance', methods=['POST'])
@@ -259,12 +345,14 @@ def finalize_attendance():
     attendance_data_to_insert = []
     
     # 3. Iterate through the full roster and determine status
+    detected_students = attendance_session.get_all()
+    
     for student in full_roster:
         roll_no = str(student['roll_no'])
         name = student['name']
         
         status = "Absent"
-        if roll_no in CURRENT_SESSION_ATTENDANCE:
+        if roll_no in detected_students:
             status = "Present"
             
         attendance_data_to_insert.append({
@@ -280,7 +368,7 @@ def finalize_attendance():
         response = supabase.table('attendance').insert(attendance_data_to_insert).execute()
         
         # Reset the session attendance tracker and detection counter
-        CURRENT_SESSION_ATTENDANCE.clear()
+        attendance_session.reset()
         DETECTION_COUNTER.clear()
         
         return jsonify({
