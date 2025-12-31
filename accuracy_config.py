@@ -13,7 +13,7 @@ TRAIN_FACE_DETECTION_MODEL = 'cnn'
 # Number of times to re-sample face during encoding (default: 1)
 # Higher = more accurate but slower training
 # Recommended: 5-15 for best accuracy
-TRAIN_NUM_JITTERS = 10
+TRAIN_NUM_JITTERS = 12
 
 # Minimum image dimensions (in pixels) to accept
 TRAIN_MIN_IMAGE_SIZE = 100
