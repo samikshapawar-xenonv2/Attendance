@@ -12,6 +12,8 @@ from supabase import create_client, Client
 # ML Libraries for real-time video stream processing
 import cv2
 import face_recognition
+import mediapipe as mp
+import time
 
 # --- Configuration and Initialization ---
 load_dotenv()
@@ -69,13 +71,23 @@ attendance_session = AttendanceSession()
 # Improved accuracy configuration
 FACE_RECOGNITION_TOLERANCE = 0.45  # Lower = more strict (default 0.6). Range: 0.0-1.0
 CONFIDENCE_THRESHOLD = 0.55  # Minimum confidence (1 - distance) to accept match
-MIN_DETECTION_COUNT = 3  # Number of consecutive detections before marking attendance
+MIN_DETECTION_COUNT = 2  # Number of consecutive detections before marking attendance (reduced for speed)
 DETECTION_COUNTER = {}  # Track consecutive detections: {RollNo: count}
 
 # Performance optimization settings
 USE_CNN_MODEL = False  # Set to False for faster performance (use HOG instead of CNN)
-FRAME_RESIZE_SCALE = 0.25  # Resize frame to 25% for faster processing (was 0.5)
-PROCESS_EVERY_N_FRAMES = 3  # Process every 3rd frame instead of every 2nd
+FRAME_RESIZE_SCALE = 0.5  # Resize frame to 50% for balance of speed and accuracy
+PROCESS_EVERY_N_FRAMES = 2  # Process every 2nd frame
+
+# --- HYBRID MODEL: MediaPipe for Detection (FAST) + Dlib for Encoding (ACCURATE) ---
+USE_HYBRID_MODEL = True  # Set to True for maximum speed (~0.3s per frame)
+
+# Initialize MediaPipe Face Detection (Blazeface - extremely fast)
+mp_face_detection = mp.solutions.face_detection
+mp_face_detector = mp_face_detection.FaceDetection(
+    model_selection=1,  # 0 = short-range (2m), 1 = full-range (5m)
+    min_detection_confidence=0.5
+)
 
 
 def is_authenticated() -> bool:
@@ -131,6 +143,37 @@ def load_model():
 
 # --- Face Recognition Core Logic (Generator Function for Video Stream) ---
 
+def get_face_locations_mediapipe(rgb_frame):
+    """
+    Uses MediaPipe BlazeFace for ultra-fast face detection (~15-30ms).
+    Returns face locations in dlib format: (top, right, bottom, left)
+    """
+    height, width = rgb_frame.shape[:2]
+    results = mp_face_detector.process(rgb_frame)
+    face_locations = []
+    
+    if results.detections:
+        for detection in results.detections:
+            bbox = detection.location_data.relative_bounding_box
+            
+            # Convert relative coordinates to absolute pixels
+            x = int(bbox.xmin * width)
+            y = int(bbox.ymin * height)
+            w = int(bbox.width * width)
+            h = int(bbox.height * height)
+            
+            # Clamp to image boundaries
+            top = max(0, y)
+            right = min(width, x + w)
+            bottom = min(height, y + h)
+            left = max(0, x)
+            
+            # Format: (top, right, bottom, left) - same as dlib
+            face_locations.append((top, right, bottom, left))
+    
+    return face_locations
+
+
 def generate_frames():
     """Captures video, detects faces, and generates the video frame stream with improved accuracy."""
     camera = cv2.VideoCapture(0) # 0 means default webcam
@@ -148,9 +191,12 @@ def generate_frames():
 
     frame_count = 0
     
-    # Determine face detection model based on setting
-    detection_model = 'cnn' if USE_CNN_MODEL else 'hog'
-    print(f"Using face detection model: {detection_model}")
+    # Log which detection model is being used
+    if USE_HYBRID_MODEL:
+        print("🚀 Using HYBRID model: MediaPipe (detection) + Dlib (encoding) - FAST MODE")
+    else:
+        detection_model = 'cnn' if USE_CNN_MODEL else 'hog'
+        print(f"Using face detection model: {detection_model}")
 
     while True:
         success, frame = camera.read()
@@ -161,16 +207,28 @@ def generate_frames():
         
         # Process frames at regular intervals for speed
         if frame_count % PROCESS_EVERY_N_FRAMES == 0:
+            start_time = time.time()
+            
             # Resize frame for faster processing
             small_frame = cv2.resize(frame, (0, 0), fx=FRAME_RESIZE_SCALE, fy=FRAME_RESIZE_SCALE)
             
             # Convert the image from BGR color (OpenCV) to RGB color (face_recognition)
             rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
             
-            # Find all the faces and face encodings in the current frame
-            # Using HOG model for speed or CNN for accuracy
-            face_locations = face_recognition.face_locations(rgb_frame, model=detection_model)
+            # --- DETECTION STEP ---
+            if USE_HYBRID_MODEL:
+                # FAST: Use MediaPipe for detection (~15-30ms)
+                face_locations = get_face_locations_mediapipe(rgb_frame)
+            else:
+                # SLOW: Use dlib HOG/CNN for detection (~100-500ms)
+                detection_model = 'cnn' if USE_CNN_MODEL else 'hog'
+                face_locations = face_recognition.face_locations(rgb_frame, model=detection_model)
+            
+            # --- ENCODING STEP (Always use dlib - it's accurate) ---
             face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
+            
+            # Calculate processing time
+            processing_time = time.time() - start_time
 
             detected_in_frame = set()
             
@@ -239,6 +297,10 @@ def generate_frames():
             for roll in list(DETECTION_COUNTER.keys()):
                 if roll not in detected_in_frame:
                     DETECTION_COUNTER[roll] = 0
+            
+            # Show processing speed on frame
+            speed_text = f"Speed: {processing_time*1000:.0f}ms | Faces: {len(face_locations)}"
+            cv2.putText(frame, speed_text, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
         # Add status text to frame
         status_text = f"Detected: {attendance_session.count()} students"
@@ -347,6 +409,17 @@ def finalize_attendance():
     # 3. Iterate through the full roster and determine status
     detected_students = attendance_session.get_all()
     
+    # DEBUG: Print what we have in the session
+    print(f"\n=== FINALIZE DEBUG ===")
+    print(f"Students in session: {len(detected_students)}")
+    for roll, data in detected_students.items():
+        print(f"  - Roll '{roll}' ({type(roll).__name__}): {data['name']}")
+    print(f"Students in DB roster: {len(full_roster)}")
+    for student in full_roster[:5]:  # Show first 5
+        print(f"  - Roll '{student['roll_no']}' ({type(student['roll_no']).__name__}): {student['name']}")
+    print(f"======================\n")
+    
+    present_count = 0
     for student in full_roster:
         roll_no = str(student['roll_no'])
         name = student['name']
@@ -354,7 +427,9 @@ def finalize_attendance():
         status = "Absent"
         if roll_no in detected_students:
             status = "Present"
-            
+            present_count += 1
+            print(f"✓ MATCHED: Roll {roll_no} - {name}")
+        
         attendance_data_to_insert.append({
             'roll_no': int(roll_no),
             'date': current_date,

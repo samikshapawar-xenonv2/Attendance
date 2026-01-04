@@ -44,6 +44,8 @@
     const downloadBtn = document.getElementById('download-btn');
     const statusMessage = document.getElementById('status-message');
 
+    let previousCount = 0; // Track previous count for new entry detection
+
     // --- Real-time detection update (Poll the backend for detected list) ---
     async function updateDetectedStudents() {
         try {
@@ -52,8 +54,17 @@
             
             const data = await response.json();
             
-            // Update count
+            // Check if new student was added
+            const isNewEntry = data.count > previousCount;
+            previousCount = data.count;
+            
+            // Update count with animation if new entry
             detectedCount.textContent = data.count;
+            if (isNewEntry && data.count > 0) {
+                // Flash the count badge
+                detectedCount.parentElement.classList.add('bg-green-100');
+                setTimeout(() => detectedCount.parentElement.classList.remove('bg-green-100'), 500);
+            }
             
             // Update list
             if (data.count === 0) {
@@ -62,9 +73,9 @@
                 // Sort by time (newest first)
                 const sortedStudents = data.students.sort((a, b) => b.time.localeCompare(a.time));
                 
-                detectedList.innerHTML = sortedStudents.map(student => `
-                    <li class="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
-                        <span class="font-medium text-gray-800">${student.name}</span>
+                detectedList.innerHTML = sortedStudents.map((student, index) => `
+                    <li class="flex justify-between items-center p-2 rounded border transition-all duration-300 ${index === 0 && isNewEntry ? 'bg-green-100 border-green-400 scale-105' : 'bg-gray-50 border-gray-200'}">
+                        <span class="font-medium text-gray-800">✓ ${student.name}</span>
                         <span class="text-xs text-gray-500">Roll: ${student.roll_no} | ${student.time}</span>
                     </li>
                 `).join('');
@@ -129,8 +140,8 @@
         statusMessage.textContent = 'Download initiated. Check your browser downloads.';
     });
     
-    // Poll for updates every 2 seconds
-    setInterval(updateDetectedStudents, 2000); 
+    // Poll for updates every 1 second for responsive feedback
+    setInterval(updateDetectedStudents, 1000); 
     updateDetectedStudents(); // Initial call
 </script>
 {% endblock %}
