@@ -4,7 +4,7 @@
 
 This application uses:
 - Camera/Webcam access
-- OpenCV (computer vision)
+- OpenCV (computer vision) f
 - Face recognition with live video streaming
 - Long-running processes
 
