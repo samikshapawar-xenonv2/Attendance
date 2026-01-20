@@ -330,14 +330,154 @@ def student_search():
 
 @app.route('/live_attendance')
 def live_attendance():
-    """Renders the live camera feed page."""
+    """Renders the live camera feed page (server-side camera - for local use only)."""
     return render_template('live_attendance.html')
+
+
+@app.route('/mobile_attendance')
+def mobile_attendance():
+    """Renders the mobile attendance page (client-side camera - for EC2/production)."""
+    return render_template('mobile_attendance.html')
 
 
 @app.route('/video_feed')
 def video_feed():
-    """Endpoint for the streaming video feed."""
+    """Endpoint for the streaming video feed (server-side camera)."""
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/api/process_frame', methods=['POST'])
+def process_frame():
+    """
+    Process a single frame from mobile camera for face recognition.
+    Accepts base64 encoded JPEG image, returns detected faces and session status.
+    This is the core endpoint for mobile/EC2 deployment.
+    """
+    import base64
+    
+    try:
+        data = request.get_json()
+        if not data or 'frame' not in data:
+            return jsonify({"error": "No frame data provided"}), 400
+        
+        # Decode base64 image
+        frame_data = data['frame']
+        # Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
+        if ',' in frame_data:
+            frame_data = frame_data.split(',')[1]
+        
+        # Decode base64 to bytes
+        img_bytes = base64.b64decode(frame_data)
+        
+        # Convert to numpy array
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return jsonify({"error": "Invalid image data"}), 400
+        
+        # Process the frame for face recognition
+        start_time = time.time()
+        
+        # Resize for faster processing
+        small_frame = cv2.resize(frame, (0, 0), fx=FRAME_RESIZE_SCALE, fy=FRAME_RESIZE_SCALE)
+        rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+        
+        # Face detection (using MediaPipe for speed)
+        if USE_HYBRID_MODEL:
+            face_locations = get_face_locations_mediapipe(rgb_frame)
+        else:
+            detection_model = 'cnn' if USE_CNN_MODEL else 'hog'
+            face_locations = face_recognition.face_locations(rgb_frame, model=detection_model)
+        
+        # Face encoding
+        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
+        
+        processing_time = time.time() - start_time
+        
+        # Scale factor for returning coordinates
+        scale_factor = int(1 / FRAME_RESIZE_SCALE)
+        
+        faces = []
+        detected_in_frame = set()
+        
+        for face_encoding, (top, right, bottom, left) in zip(face_encodings, face_locations):
+            # Scale back face locations
+            top *= scale_factor
+            right *= scale_factor
+            bottom *= scale_factor
+            left *= scale_factor
+            
+            # Match against known faces
+            matches = face_recognition.compare_faces(
+                KNOWN_FACE_ENCODINGS, 
+                face_encoding,
+                tolerance=FACE_RECOGNITION_TOLERANCE
+            )
+            
+            name = "Unknown"
+            confidence = 0.0
+            roll_no = None
+            recognized = False
+            
+            if len(KNOWN_FACE_ENCODINGS) > 0:
+                face_distances = face_recognition.face_distance(KNOWN_FACE_ENCODINGS, face_encoding)
+                best_match_index = np.argmin(face_distances)
+                best_distance = face_distances[best_match_index]
+                confidence = 1 - best_distance
+                
+                if matches[best_match_index] and confidence >= CONFIDENCE_THRESHOLD:
+                    full_id = KNOWN_FACE_IDS[best_match_index]
+                    roll_no, student_name = full_id.split('_', 1)
+                    name = student_name.replace('_', ' ')
+                    recognized = True
+                    
+                    detected_in_frame.add(roll_no)
+                    
+                    # Track consecutive detections
+                    if roll_no not in DETECTION_COUNTER:
+                        DETECTION_COUNTER[roll_no] = 0
+                    DETECTION_COUNTER[roll_no] += 1
+                    
+                    # Mark attendance after sufficient detections
+                    if roll_no not in attendance_session.get_all() and DETECTION_COUNTER[roll_no] >= MIN_DETECTION_COUNT:
+                        attendance_session.add(roll_no, name)
+                        print(f"✓ [Mobile] Attendance marked: {name} (Roll {roll_no}) - Confidence: {confidence:.2%}")
+            
+            faces.append({
+                "top": top,
+                "right": right,
+                "bottom": bottom,
+                "left": left,
+                "name": name,
+                "confidence": confidence,
+                "recognized": recognized,
+                "roll_no": roll_no
+            })
+        
+        # Reset counter for students not detected
+        for roll in list(DETECTION_COUNTER.keys()):
+            if roll not in detected_in_frame:
+                DETECTION_COUNTER[roll] = 0
+        
+        # Return results
+        return jsonify({
+            "success": True,
+            "processing_time_ms": round(processing_time * 1000, 1),
+            "faces_detected": len(faces),
+            "faces": faces,
+            "session_count": attendance_session.count(),
+            "students": [
+                {"roll_no": k, "name": v['name'], "time": v['time']} 
+                for k, v in attendance_session.get_all().items()
+            ]
+        })
+        
+    except Exception as e:
+        print(f"Frame processing error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/session/status', methods=['GET'])

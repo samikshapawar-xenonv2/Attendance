@@ -1,15 +1,48 @@
+# Virtual environments
 venv/
 venv310/
-__pycache__/
-.pytest_cache/
 .venv/
-.git/
+
+# Python cache
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.sqlite3
 .pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+
+# Logs
 *.log
-.env
-/.vscode/
+
+# Local database
+*.sqlite3
+
+# Node (if any)
 node_modules/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# SSL certificates (mounted as volume)
+ssl/
+certbot/
+
+# Documentation
+*.md
+!requirements.txt
+
+# Generated reports (temporary)
+*.xlsx
+*.csv
+
+# Development files
+deploy.sh

@@ -1,0 +1,18 @@
+# Simple docker-compose for local development without SSL
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: attendance-app-dev
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    volumes:
+      - ./public:/app/public:ro
+      - ./face_encodings.pkl:/app/face_encodings.pkl:ro
+    restart: unless-stopped
+
+# Usage:
+# docker-compose -f docker-compose.dev.yml up --build

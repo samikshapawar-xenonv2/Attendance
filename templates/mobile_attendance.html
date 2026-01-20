@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+{% block title %}Mobile Attendance{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 text-center">📱 Mobile Attendance</h1>
+    
+    <!-- Camera Selection -->
+    <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
+        <select id="cameraSelect" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            <option value="">Loading cameras...</option>
+        </select>
+    </div>
+
+    <!-- Video Preview -->
+    <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
+        <div class="relative">
+            <video id="videoPreview" autoplay playsinline muted class="w-full rounded-lg border-2 border-gray-300 bg-black"></video>
+            <canvas id="canvasOverlay" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+            
+            <!-- Status Overlay -->
+            <div id="statusOverlay" class="absolute top-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-sm">
+                <span id="cameraStatus">📷 Initializing...</span>
+            </div>
+            
+            <!-- Detection Count Overlay -->
+            <div class="absolute top-2 right-2 bg-green-600 text-white px-3 py-1 rounded-full text-sm font-bold">
+                <span id="detectedCount">0</span> Detected
+            </div>
+        </div>
+        
+        <!-- Hidden canvas for frame capture -->
+        <canvas id="captureCanvas" class="hidden"></canvas>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
+        <div class="grid grid-cols-2 gap-3">
+            <button id="startBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2">
+                <span>▶️</span> Start Scanning
+            </button>
+            <button id="stopBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2" disabled>
+                <span>⏹️</span> Stop
+            </button>
+        </div>
+        
+        <div class="mt-3 grid grid-cols-2 gap-3">
+            <button id="finalizeBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2">
+                <span>💾</span> Save Attendance
+            </button>
+            <button id="resetBtn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2">
+                <span>🔄</span> Reset Session
+            </button>
+        </div>
+        
+        <!-- Processing Indicator -->
+        <div id="processingIndicator" class="hidden mt-3 text-center">
+            <div class="inline-flex items-center gap-2 text-blue-600">
+                <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span>Processing frame...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Message -->
+    <div id="statusMessage" class="hidden bg-white p-4 rounded-lg shadow-lg mb-4 text-center font-medium"></div>
+
+    <!-- Detected Students List -->
+    <div class="bg-white p-4 rounded-lg shadow-lg">
+        <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
+            <span>👥</span> Detected Students
+            <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm" id="totalDetected">0</span>
+        </h2>
+        <ul id="detectedList" class="space-y-2 max-h-64 overflow-y-auto">
+            <li class="text-gray-500 italic text-center py-4">Start scanning to detect students...</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    // Elements
+    const videoPreview = document.getElementById('videoPreview');
+    const captureCanvas = document.getElementById('captureCanvas');
+    const canvasOverlay = document.getElementById('canvasOverlay');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const finalizeBtn = document.getElementById('finalizeBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const cameraStatus = document.getElementById('cameraStatus');
+    const detectedCount = document.getElementById('detectedCount');
+    const totalDetected = document.getElementById('totalDetected');
+    const detectedList = document.getElementById('detectedList');
+    const statusMessage = document.getElementById('statusMessage');
+    const processingIndicator = document.getElementById('processingIndicator');
+
+    // State
+    let stream = null;
+    let isScanning = false;
+    let scanInterval = null;
+    let ctx = captureCanvas.getContext('2d');
+    let overlayCtx = canvasOverlay.getContext('2d');
+    
+    // Configuration
+    const SCAN_INTERVAL_MS = 500; // Send frame every 500ms (2 FPS) to avoid overloading server
+    const FRAME_QUALITY = 0.7; // JPEG quality (0.0 - 1.0)
+    const MAX_FRAME_WIDTH = 640; // Resize for faster upload
+
+    // Initialize camera list
+    async function initCameraList() {
+        try {
+            // Request permission first
+            const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            tempStream.getTracks().forEach(track => track.stop());
+            
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            
+            cameraSelect.innerHTML = '';
+            videoDevices.forEach((device, index) => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `Camera ${index + 1}`;
+                // Prefer back camera on mobile
+                if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
+                    option.selected = true;
+                }
+                cameraSelect.appendChild(option);
+            });
+            
+            if (videoDevices.length === 0) {
+                cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+                showStatus('No cameras available', 'error');
+            }
+        } catch (err) {
+            console.error('Camera access error:', err);
+            cameraSelect.innerHTML = '<option value="">Camera access denied</option>';
+            showStatus('Please allow camera access', 'error');
+        }
+    }
+
+    // Start camera
+    async function startCamera() {
+        try {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            const constraints = {
+                video: {
+                    deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: cameraSelect.value ? undefined : 'environment' // Prefer back camera
+                }
+            };
+            
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            videoPreview.srcObject = stream;
+            
+            // Wait for video to be ready
+            await new Promise(resolve => {
+                videoPreview.onloadedmetadata = () => {
+                    // Set canvas sizes to match video
+                    captureCanvas.width = videoPreview.videoWidth;
+                    captureCanvas.height = videoPreview.videoHeight;
+                    canvasOverlay.width = videoPreview.clientWidth;
+                    canvasOverlay.height = videoPreview.clientHeight;
+                    resolve();
+                };
+            });
+            
+            cameraStatus.textContent = '📷 Camera ready';
+            return true;
+        } catch (err) {
+            console.error('Camera error:', err);
+            cameraStatus.textContent = '❌ Camera error';
+            showStatus('Failed to access camera: ' + err.message, 'error');
+            return false;
+        }
+    }
+
+    // Capture frame and send to server
+    async function captureAndProcess() {
+        if (!isScanning || !stream) return;
+        
+        try {
+            // Draw current video frame to canvas
+            ctx.drawImage(videoPreview, 0, 0, captureCanvas.width, captureCanvas.height);
+            
+            // Resize if too large
+            let sendCanvas = captureCanvas;
+            if (captureCanvas.width > MAX_FRAME_WIDTH) {
+                const ratio = MAX_FRAME_WIDTH / captureCanvas.width;
+                const resizeCanvas = document.createElement('canvas');
+                resizeCanvas.width = MAX_FRAME_WIDTH;
+                resizeCanvas.height = captureCanvas.height * ratio;
+                resizeCanvas.getContext('2d').drawImage(captureCanvas, 0, 0, resizeCanvas.width, resizeCanvas.height);
+                sendCanvas = resizeCanvas;
+            }
+            
+            // Convert to base64
+            const frameData = sendCanvas.toDataURL('image/jpeg', FRAME_QUALITY);
+            
+            processingIndicator.classList.remove('hidden');
+            
+            // Send to server
+            const response = await fetch('/api/process_frame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ frame: frameData })
+            });
+            
+            if (!response.ok) throw new Error('Server error');
+            
+            const result = await response.json();
+            
+            // Update UI with results
+            updateDetectionUI(result);
+            
+            // Draw face boxes on overlay
+            drawFaceBoxes(result.faces || []);
+            
+        } catch (err) {
+            console.error('Processing error:', err);
+        } finally {
+            processingIndicator.classList.add('hidden');
+        }
+    }
+
+    // Draw face detection boxes
+    function drawFaceBoxes(faces) {
+        // Clear overlay
+        overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+        
+        // Scale factors
+        const scaleX = canvasOverlay.width / captureCanvas.width;
+        const scaleY = canvasOverlay.height / captureCanvas.height;
+        
+        faces.forEach(face => {
+            const x = face.left * scaleX;
+            const y = face.top * scaleY;
+            const w = (face.right - face.left) * scaleX;
+            const h = (face.bottom - face.top) * scaleY;
+            
+            // Draw box
+            overlayCtx.strokeStyle = face.recognized ? '#00ff00' : '#ff0000';
+            overlayCtx.lineWidth = 3;
+            overlayCtx.strokeRect(x, y, w, h);
+            
+            // Draw label background
+            overlayCtx.fillStyle = face.recognized ? '#00ff00' : '#ff0000';
+            overlayCtx.fillRect(x, y + h, w, 25);
+            
+            // Draw label text
+            overlayCtx.fillStyle = '#ffffff';
+            overlayCtx.font = 'bold 14px Arial';
+            overlayCtx.fillText(face.name + (face.confidence ? ` (${Math.round(face.confidence * 100)}%)` : ''), x + 5, y + h + 18);
+        });
+    }
+
+    // Update detection UI
+    function updateDetectionUI(result) {
+        detectedCount.textContent = result.session_count || 0;
+        totalDetected.textContent = result.session_count || 0;
+        
+        if (result.students && result.students.length > 0) {
+            detectedList.innerHTML = result.students.map(student => `
+                <li class="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <span class="font-medium">✓ ${student.name}</span>
+                    <span class="text-sm text-gray-500">Roll: ${student.roll_no} | ${student.time}</span>
+                </li>
+            `).join('');
+        }
+    }
+
+    // Start scanning
+    startBtn.addEventListener('click', async () => {
+        const cameraReady = await startCamera();
+        if (!cameraReady) return;
+        
+        isScanning = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        cameraStatus.textContent = '🔍 Scanning...';
+        
+        // Start periodic frame capture
+        scanInterval = setInterval(captureAndProcess, SCAN_INTERVAL_MS);
+        showStatus('Scanning started. Point camera at students.', 'success');
+    });
+
+    // Stop scanning
+    stopBtn.addEventListener('click', () => {
+        isScanning = false;
+        if (scanInterval) {
+            clearInterval(scanInterval);
+            scanInterval = null;
+        }
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        cameraStatus.textContent = '⏸️ Paused';
+        overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+        showStatus('Scanning paused.', 'info');
+    });
+
+    // Finalize attendance
+    finalizeBtn.addEventListener('click', async () => {
+        if (!confirm('Save attendance to database?')) return;
+        
+        try {
+            const response = await fetch('/finalize_attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showStatus(`✅ ${data.message} Present: ${data.present_count}, Absent: ${data.absent_count}`, 'success');
+                refreshSessionStatus();
+            } else {
+                showStatus(`❌ Error: ${data.error}`, 'error');
+            }
+        } catch (err) {
+            showStatus('Network error', 'error');
+        }
+    });
+
+    // Reset session
+    resetBtn.addEventListener('click', async () => {
+        if (!confirm('Clear all detected students?')) return;
+        
+        try {
+            await fetch('/api/session/reset', { method: 'POST' });
+            showStatus('Session reset', 'info');
+            refreshSessionStatus();
+        } catch (err) {
+            showStatus('Reset failed', 'error');
+        }
+    });
+
+    // Refresh session status
+    async function refreshSessionStatus() {
+        try {
+            const response = await fetch('/api/session/status');
+            const data = await response.json();
+            
+            detectedCount.textContent = data.count;
+            totalDetected.textContent = data.count;
+            
+            if (data.count === 0) {
+                detectedList.innerHTML = '<li class="text-gray-500 italic text-center py-4">Start scanning to detect students...</li>';
+            } else {
+                detectedList.innerHTML = data.students.map(student => `
+                    <li class="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <span class="font-medium">✓ ${student.name}</span>
+                        <span class="text-sm text-gray-500">Roll: ${student.roll_no} | ${student.time}</span>
+                    </li>
+                `).join('');
+            }
+        } catch (err) {
+            console.error('Status refresh error:', err);
+        }
+    }
+
+    // Show status message
+    function showStatus(message, type) {
+        statusMessage.classList.remove('hidden', 'text-green-600', 'text-red-600', 'text-blue-600', 'bg-green-50', 'bg-red-50', 'bg-blue-50');
+        
+        if (type === 'success') {
+            statusMessage.classList.add('text-green-600', 'bg-green-50');
+        } else if (type === 'error') {
+            statusMessage.classList.add('text-red-600', 'bg-red-50');
+        } else {
+            statusMessage.classList.add('text-blue-600', 'bg-blue-50');
+        }
+        
+        statusMessage.textContent = message;
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => statusMessage.classList.add('hidden'), 5000);
+    }
+
+    // Camera change handler
+    cameraSelect.addEventListener('change', () => {
+        if (stream) {
+            startCamera();
+        }
+    });
+
+    // Handle page visibility (pause when tab is hidden)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && isScanning) {
+            clearInterval(scanInterval);
+        } else if (!document.hidden && isScanning) {
+            scanInterval = setInterval(captureAndProcess, SCAN_INTERVAL_MS);
+        }
+    });
+
+    // Initialize
+    initCameraList();
+    refreshSessionStatus();
+    
+    // Periodic status refresh
+    setInterval(refreshSessionStatus, 3000);
+</script>
+{% endblock %}
