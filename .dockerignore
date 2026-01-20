@@ -1,0 +1,15 @@
+venv/
+venv310/
+__pycache__/
+.pytest_cache/
+.venv/
+.git/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.pytest_cache/
+*.log
+.env
+/.vscode/
+node_modules/

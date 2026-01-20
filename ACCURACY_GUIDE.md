@@ -1,5 +1,5 @@
 # 🎯 Improving Face Recognition Accuracy
-
+.\venv\Scripts\activate
 ## 📊 Current Accuracy Status
 
 Your system has been upgraded with the following improvements:
