@@ -105,6 +105,10 @@
     let ctx = captureCanvas.getContext('2d');
     let overlayCtx = canvasOverlay.getContext('2d');
     
+    // Track the actual dimensions of the frame sent to server (for coordinate scaling)
+    let sentFrameWidth = 0;
+    let sentFrameHeight = 0;
+    
     // Configuration
     const SCAN_INTERVAL_MS = 500; // Send frame every 500ms (2 FPS) to avoid overloading server
     const FRAME_QUALITY = 0.7; // JPEG quality (0.0 - 1.0)
@@ -192,16 +196,20 @@
             // Draw current video frame to canvas
             ctx.drawImage(videoPreview, 0, 0, captureCanvas.width, captureCanvas.height);
             
-            // Resize if too large
+            // Resize if too large and track sent dimensions
             let sendCanvas = captureCanvas;
             if (captureCanvas.width > MAX_FRAME_WIDTH) {
                 const ratio = MAX_FRAME_WIDTH / captureCanvas.width;
                 const resizeCanvas = document.createElement('canvas');
                 resizeCanvas.width = MAX_FRAME_WIDTH;
-                resizeCanvas.height = captureCanvas.height * ratio;
+                resizeCanvas.height = Math.round(captureCanvas.height * ratio);
                 resizeCanvas.getContext('2d').drawImage(captureCanvas, 0, 0, resizeCanvas.width, resizeCanvas.height);
                 sendCanvas = resizeCanvas;
             }
+            
+            // Track the actual sent dimensions for coordinate mapping
+            sentFrameWidth = sendCanvas.width;
+            sentFrameHeight = sendCanvas.height;
             
             // Convert to base64
             const frameData = sendCanvas.toDataURL('image/jpeg', FRAME_QUALITY);
@@ -237,9 +245,10 @@
         // Clear overlay
         overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
         
-        // Scale factors
-        const scaleX = canvasOverlay.width / captureCanvas.width;
-        const scaleY = canvasOverlay.height / captureCanvas.height;
+        // Scale factors: server returns coordinates relative to sent frame size
+        // We need to scale from sent frame to overlay (display) size
+        const scaleX = canvasOverlay.width / sentFrameWidth;
+        const scaleY = canvasOverlay.height / sentFrameHeight;
         
         faces.forEach(face => {
             const x = face.left * scaleX;
