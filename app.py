@@ -83,11 +83,20 @@ PROCESS_EVERY_N_FRAMES = 2  # Process every 2nd frame
 USE_HYBRID_MODEL = True  # Set to True for maximum speed (~0.3s per frame)
 
 # Initialize MediaPipe Face Detection (Blazeface - extremely fast)
-mp_face_detection = mp.solutions.face_detection
-mp_face_detector = mp_face_detection.FaceDetection(
-    model_selection=1,  # 0 = short-range (2m), 1 = full-range (5m)
-    min_detection_confidence=0.5
-)
+try:
+    if not hasattr(mp, 'solutions'):
+        raise ImportError("MediaPipe solutions not available")
+        
+    mp_face_detection = mp.solutions.face_detection
+    mp_face_detector = mp_face_detection.FaceDetection(
+        model_selection=1,  # 0 = short-range (2m), 1 = full-range (5m)
+        min_detection_confidence=0.5
+    )
+except Exception as e:
+    print(f"WARNING: MediaPipe initialization failed: {e}")
+    print("Falling back to pure Face_Recognition (dlib) model. Performance may be slower.")
+    USE_HYBRID_MODEL = False
+    mp_face_detector = None
 
 
 def is_authenticated() -> bool:
