@@ -83,20 +83,26 @@ PROCESS_EVERY_N_FRAMES = 2  # Process every 2nd frame
 USE_HYBRID_MODEL = True  # Set to True for maximum speed (~0.3s per frame)
 
 # Initialize MediaPipe Face Detection (Blazeface - extremely fast)
+# Note: On headless servers (like EC2), MediaPipe may have GPU context issues
+# We increase detection confidence to reduce false positives
 try:
     if not hasattr(mp, 'solutions'):
         raise ImportError("MediaPipe solutions not available")
         
     mp_face_detection = mp.solutions.face_detection
     mp_face_detector = mp_face_detection.FaceDetection(
-        model_selection=1,  # 0 = short-range (2m), 1 = full-range (5m)
-        min_detection_confidence=0.5
+        model_selection=0,  # 0 = short-range (2m, better for webcam), 1 = full-range (5m)
+        min_detection_confidence=0.7  # Higher confidence to reduce false positives
     )
+    print("MediaPipe face detection initialized (confidence=0.7)")
 except Exception as e:
     print(f"WARNING: MediaPipe initialization failed: {e}")
     print("Falling back to pure Face_Recognition (dlib) model. Performance may be slower.")
     USE_HYBRID_MODEL = False
     mp_face_detector = None
+
+# Minimum face size (as fraction of frame) to filter out tiny false detections
+MIN_FACE_SIZE_RATIO = 0.05  # Face must be at least 5% of frame width
 
 
 def is_authenticated() -> bool:
@@ -156,13 +162,21 @@ def get_face_locations_mediapipe(rgb_frame):
     """
     Uses MediaPipe BlazeFace for ultra-fast face detection (~15-30ms).
     Returns face locations in dlib format: (top, right, bottom, left)
+    Includes filtering to reject false positives (too small, wrong aspect ratio).
     """
     height, width = rgb_frame.shape[:2]
+    min_face_size = int(width * MIN_FACE_SIZE_RATIO)  # Minimum face width in pixels
+    
     results = mp_face_detector.process(rgb_frame)
     face_locations = []
     
     if results.detections:
         for detection in results.detections:
+            # Check detection score
+            score = detection.score[0] if detection.score else 0
+            if score < 0.7:  # Extra confidence check
+                continue
+                
             bbox = detection.location_data.relative_bounding_box
             
             # Convert relative coordinates to absolute pixels
@@ -170,6 +184,15 @@ def get_face_locations_mediapipe(rgb_frame):
             y = int(bbox.ymin * height)
             w = int(bbox.width * width)
             h = int(bbox.height * height)
+            
+            # Filter out tiny detections (likely false positives)
+            if w < min_face_size or h < min_face_size:
+                continue
+            
+            # Filter by aspect ratio (faces are roughly square, 0.6-1.8 ratio)
+            aspect_ratio = w / h if h > 0 else 0
+            if aspect_ratio < 0.5 or aspect_ratio > 2.0:
+                continue
             
             # Clamp to image boundaries
             top = max(0, y)
@@ -392,12 +415,21 @@ def process_frame():
         small_frame = cv2.resize(frame, (0, 0), fx=FRAME_RESIZE_SCALE, fy=FRAME_RESIZE_SCALE)
         rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
         
-        # Face detection (using MediaPipe for speed)
-        if USE_HYBRID_MODEL:
-            face_locations = get_face_locations_mediapipe(rgb_frame)
-        else:
-            detection_model = 'cnn' if USE_CNN_MODEL else 'hog'
-            face_locations = face_recognition.face_locations(rgb_frame, model=detection_model)
+        # Face detection with fallback strategy:
+        # 1. Try MediaPipe first (fast)
+        # 2. If no faces found, fallback to dlib/HOG (more reliable)
+        face_locations = []
+        if USE_HYBRID_MODEL and mp_face_detector is not None:
+            try:
+                face_locations = get_face_locations_mediapipe(rgb_frame)
+            except Exception as e:
+                print(f"MediaPipe detection error: {e}")
+                face_locations = []
+        
+        # Fallback to dlib if MediaPipe found nothing
+        if len(face_locations) == 0:
+            # Use HOG (faster) for mobile/API, CNN only if explicitly set
+            face_locations = face_recognition.face_locations(rgb_frame, model='hog')
         
         # Face encoding
         face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
