@@ -12,14 +12,25 @@ DATASET_PATH = os.path.join(os.getcwd(), 'public')
 ENCODINGS_FILE = "face_encodings.pkl"
 
 # Improved accuracy settings
-# Improved accuracy settings
 MIN_IMAGE_SIZE = 100  # Minimum face size to accept
-NUM_JITTERS = 10  # Number of times to re-sample face for better encoding (default is 1)
+NUM_JITTERS = 15  # Increased for better encoding quality (default is 1)
+USE_ALL_ENCODINGS = True  # Store all encodings per person (better accuracy)
+USE_CNN_FOR_TRAINING = True  # Use CNN model for more accurate face detection during training
 
-# MediaPipe Setup
-mp_face_detection = mp.solutions.face_detection
-face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
-NUM_JITTERS = 10  # Number of times to re-sample face for better encoding (default is 1)
+# Try MediaPipe, fallback to dlib
+try:
+    import mediapipe as mp
+    if hasattr(mp, 'solutions'):
+        mp_face_detection = mp.solutions.face_detection
+        face_detection = mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5)
+        USE_MEDIAPIPE = True
+        print("Using MediaPipe for face detection")
+    else:
+        USE_MEDIAPIPE = False
+        print("MediaPipe solutions not available, using dlib")
+except Exception as e:
+    USE_MEDIAPIPE = False
+    print(f"MediaPipe not available ({e}), using dlib")
 
 def train_and_save_encodings(dataset_path, output_file):
     """
@@ -77,29 +88,30 @@ def train_and_save_encodings(dataset_path, output_file):
                             print(f"  Warning: Image {image_file} too small. Skipping.")
                             continue
                         
-                        # Find faces using CNN model for better accuracy
-                        # Find faces using MediaPipe for consistency
+                        # Find faces using MediaPipe or dlib
                         height, width, _ = image.shape
-                        rgb_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR) # face_recognition loads as RGB, but cvtColor expects BGR if we treat it as such? 
-                        # Wait, face_recognition.load_image_file loads as RGB. MediaPipe expects RGB.
-                        # So we can pass image directly to MediaPipe?
-                        # Let's verify: face_recognition loads as RGB. MediaPipe process expects RGB.
                         
-                        results = face_detection.process(image)
-                        face_locations = []
-                        
-                        if results.detections:
-                            for detection in results.detections:
-                                bboxC = detection.location_data.relative_bounding_box
-                                x = int(bboxC.xmin * width)
-                                y = int(bboxC.ymin * height)
-                                w = int(bboxC.width * width)
-                                h = int(bboxC.height * height)
-                                top = max(0, y)
-                                right = min(width, x + w)
-                                bottom = min(height, y + h)
-                                left = max(0, x)
-                                face_locations.append((top, right, bottom, left))
+                        if USE_MEDIAPIPE:
+                            # Use MediaPipe
+                            results = face_detection.process(image)
+                            face_locations = []
+                            
+                            if results.detections:
+                                for detection in results.detections:
+                                    bboxC = detection.location_data.relative_bounding_box
+                                    x = int(bboxC.xmin * width)
+                                    y = int(bboxC.ymin * height)
+                                    w = int(bboxC.width * width)
+                                    h = int(bboxC.height * height)
+                                    top = max(0, y)
+                                    right = min(width, x + w)
+                                    bottom = min(height, y + h)
+                                    left = max(0, x)
+                                    face_locations.append((top, right, bottom, left))
+                        else:
+                            # Use dlib (CNN for better accuracy during training)
+                            model = 'cnn' if USE_CNN_FOR_TRAINING else 'hog'
+                            face_locations = face_recognition.face_locations(image, model=model)
 
                         if len(face_locations) == 1:
                             # Generate the 128-dimension face encoding with multiple jitters
@@ -121,9 +133,15 @@ def train_and_save_encodings(dataset_path, output_file):
                     except Exception as e:
                         print(f"  ✗ Error processing {image_file}: {e}")
 
-            # Average all encodings for this student for better accuracy
+            # Store ALL encodings for this student (better accuracy than averaging)
             if student_encodings:
-                if len(student_encodings) > 1:
+                if USE_ALL_ENCODINGS:
+                    # Store each encoding separately for better matching
+                    for enc in student_encodings:
+                        known_face_encodings.append(enc)
+                        known_face_names.append(f"{roll_no}_{name}")
+                    print(f"  ✓ Stored {len(student_encodings)} separate encodings for better accuracy")
+                elif len(student_encodings) > 1:
                     # Create averaged encoding from all images
                     avg_encoding = np.mean(student_encodings, axis=0)
                     known_face_encodings.append(avg_encoding)

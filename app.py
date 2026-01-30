@@ -68,15 +68,16 @@ class AttendanceSession:
 # Global instance
 attendance_session = AttendanceSession()
 
-# Improved accuracy configuration
-FACE_RECOGNITION_TOLERANCE = 0.45  # Lower = more strict (default 0.6). Range: 0.0-1.0
-CONFIDENCE_THRESHOLD = 0.55  # Minimum confidence (1 - distance) to accept match
-MIN_DETECTION_COUNT = 2  # Number of consecutive detections before marking attendance (reduced for speed)
+# OPTIMIZED accuracy configuration for mobile/web camera
+# These settings balance accuracy with varying lighting/angles
+FACE_RECOGNITION_TOLERANCE = 0.5  # Slightly relaxed (default 0.6). Range: 0.0-1.0
+CONFIDENCE_THRESHOLD = 0.45  # Lowered for mobile camera conditions
+MIN_DETECTION_COUNT = 2  # Number of consecutive detections before marking attendance
 DETECTION_COUNTER = {}  # Track consecutive detections: {RollNo: count}
 
 # Performance optimization settings
 USE_CNN_MODEL = False  # Set to False for faster performance (use HOG instead of CNN)
-FRAME_RESIZE_SCALE = 0.5  # Resize frame to 50% for balance of speed and accuracy
+FRAME_RESIZE_SCALE = 0.75  # Increased to 75% for better face encoding accuracy
 PROCESS_EVERY_N_FRAMES = 2  # Process every 2nd frame
 
 # --- HYBRID MODEL: MediaPipe for Detection (FAST) + Dlib for Encoding (ACCURATE) ---
@@ -431,23 +432,28 @@ def process_frame():
             # Use HOG (faster) for mobile/API, CNN only if explicitly set
             face_locations = face_recognition.face_locations(rgb_frame, model='hog')
         
-        # Face encoding
-        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
+        # Face encoding with more jitters for better accuracy
+        # num_jitters=2 gives better encoding at slight speed cost
+        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=2)
         
         processing_time = time.time() - start_time
         
+        # Log for debugging
+        if face_locations:
+            print(f"[API] Detected {len(face_locations)} face(s), processing time: {processing_time*1000:.0f}ms")
+        
         # Scale factor for returning coordinates
-        scale_factor = int(1 / FRAME_RESIZE_SCALE)
+        scale_factor = 1.0 / FRAME_RESIZE_SCALE
         
         faces = []
         detected_in_frame = set()
         
         for face_encoding, (top, right, bottom, left) in zip(face_encodings, face_locations):
-            # Scale back face locations
-            top *= scale_factor
-            right *= scale_factor
-            bottom *= scale_factor
-            left *= scale_factor
+            # Scale back face locations to original frame size
+            top = int(top * scale_factor)
+            right = int(right * scale_factor)
+            bottom = int(bottom * scale_factor)
+            left = int(left * scale_factor)
             
             # Match against known faces
             matches = face_recognition.compare_faces(
@@ -467,11 +473,16 @@ def process_frame():
                 best_distance = face_distances[best_match_index]
                 confidence = 1 - best_distance
                 
+                # Log best match for debugging
+                best_name = KNOWN_FACE_IDS[best_match_index] if best_match_index < len(KNOWN_FACE_IDS) else "N/A"
+                print(f"[API] Best match: {best_name}, distance: {best_distance:.3f}, confidence: {confidence:.2%}")
+                
                 if matches[best_match_index] and confidence >= CONFIDENCE_THRESHOLD:
                     full_id = KNOWN_FACE_IDS[best_match_index]
                     roll_no, student_name = full_id.split('_', 1)
                     name = student_name.replace('_', ' ')
                     recognized = True
+                    print(f"[API] ✓ Recognized: {name} (Roll {roll_no})")
                     
                     detected_in_frame.add(roll_no)
                     
