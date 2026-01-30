@@ -1,82 +1,210 @@
 {% extends "base.html" %}
-{% block title %}Mobile Attendance{% endblock %}
+{% block title %}Take Attendance - AttendAI{% endblock %}
+
+{% block extra_head %}
+<style>
+    .camera-container {
+        position: relative;
+        border-radius: 1.5rem;
+        overflow: hidden;
+        background: #000;
+        aspect-ratio: 4/3;
+    }
+    @media (min-width: 768px) {
+        .camera-container {
+            aspect-ratio: 16/9;
+        }
+    }
+    .camera-container video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .camera-container canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+    .pulse-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(1.2); }
+    }
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        transition: all 0.3s ease;
+    }
+    .btn-primary:hover {
+        opacity: 0.9;
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+    .btn-primary:disabled {
+        opacity: 0.5;
+        transform: none;
+        box-shadow: none;
+        cursor: not-allowed;
+    }
+    .student-card {
+        animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateX(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto">
-    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 text-center">📱 Mobile Attendance</h1>
+<div class="max-w-3xl mx-auto">
     
-    <!-- Camera Selection -->
-    <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
-        <select id="cameraSelect" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-            <option value="">Loading cameras...</option>
-        </select>
+    <!-- Header -->
+    <div class="text-center mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-slate-800 mb-2">📷 Face Recognition</h1>
+        <p class="text-slate-500">Point camera at students to mark attendance</p>
     </div>
 
-    <!-- Video Preview -->
-    <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
-        <div class="relative">
-            <video id="videoPreview" autoplay playsinline muted class="w-full rounded-lg border-2 border-gray-300 bg-black"></video>
-            <canvas id="canvasOverlay" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+    <!-- Camera Section -->
+    <div class="bg-white rounded-3xl shadow-xl overflow-hidden mb-6">
+        
+        <!-- Camera Select (Minimal) -->
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div id="statusDot" class="pulse-dot bg-slate-400"></div>
+                <span id="cameraStatus" class="text-sm font-medium text-slate-600">Select Camera</span>
+            </div>
+            <select id="cameraSelect" class="text-sm bg-slate-100 border-0 rounded-full px-3 py-1.5 focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+        
+        <!-- Camera Preview -->
+        <div class="camera-container">
+            <video id="videoPreview" autoplay playsinline muted></video>
+            <canvas id="canvasOverlay"></canvas>
             
-            <!-- Status Overlay -->
-            <div id="statusOverlay" class="absolute top-2 left-2 bg-black/70 text-white px-3 py-1 rounded-full text-sm">
-                <span id="cameraStatus">📷 Initializing...</span>
+            <!-- Scanning Indicator -->
+            <div id="scanningBadge" class="hidden absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
+                <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                LIVE
             </div>
             
-            <!-- Detection Count Overlay -->
-            <div class="absolute top-2 right-2 bg-green-600 text-white px-3 py-1 rounded-full text-sm font-bold">
-                <span id="detectedCount">0</span> Detected
+            <!-- Count Badge -->
+            <div class="absolute top-4 right-4 bg-black/60 backdrop-blur text-white px-4 py-2 rounded-full">
+                <span class="font-bold text-lg" id="detectedCount">0</span>
+                <span class="text-white/80 text-sm"> detected</span>
+            </div>
+            
+            <!-- Processing Overlay -->
+            <div id="processingOverlay" class="hidden absolute inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center">
+                <div class="bg-white rounded-2xl px-6 py-4 flex items-center gap-3">
+                    <svg class="animate-spin h-5 w-5 text-indigo-600" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="font-medium text-slate-700">Processing...</span>
+                </div>
+            </div>
+            
+            <!-- Placeholder when camera off -->
+            <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white">
+                <span class="text-6xl mb-4">📷</span>
+                <p class="text-slate-400">Tap "Start Scanning" to begin</p>
             </div>
         </div>
         
-        <!-- Hidden canvas for frame capture -->
+        <!-- Hidden capture canvas -->
         <canvas id="captureCanvas" class="hidden"></canvas>
+        
+        <!-- Control Buttons -->
+        <div class="p-4 grid grid-cols-2 gap-3">
+            <button id="startBtn" class="btn-primary text-white font-semibold py-3.5 px-6 rounded-xl flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Start Scanning
+            </button>
+            <button id="stopBtn" class="bg-slate-200 text-slate-700 font-semibold py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-300 transition-all disabled:opacity-50" disabled>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path>
+                </svg>
+                Stop
+            </button>
+        </div>
     </div>
 
-    <!-- Controls -->
-    <div class="bg-white p-4 rounded-lg shadow-lg mb-4">
-        <div class="grid grid-cols-2 gap-3">
-            <button id="startBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2">
-                <span>▶️</span> Start Scanning
-            </button>
-            <button id="stopBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2" disabled>
-                <span>⏹️</span> Stop
-            </button>
+    <!-- Status Alert -->
+    <div id="statusMessage" class="hidden mb-6 p-4 rounded-2xl font-medium text-center"></div>
+
+    <!-- Detected Students -->
+    <div class="bg-white rounded-3xl shadow-xl overflow-hidden mb-6">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <span class="text-xl">👥</span>
+                <h2 class="font-bold text-slate-800">Detected Students</h2>
+            </div>
+            <span class="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-sm font-bold" id="totalDetected">0</span>
         </div>
         
-        <div class="mt-3 grid grid-cols-2 gap-3">
-            <button id="finalizeBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2">
-                <span>💾</span> Save Attendance
-            </button>
-            <button id="resetBtn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition flex items-center justify-center gap-2">
-                <span>🔄</span> Reset Session
-            </button>
-        </div>
-        
-        <!-- Processing Indicator -->
-        <div id="processingIndicator" class="hidden mt-3 text-center">
-            <div class="inline-flex items-center gap-2 text-blue-600">
-                <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Processing frame...</span>
+        <div id="detectedList" class="p-4 max-h-80 overflow-y-auto space-y-2">
+            <div class="text-center py-8 text-slate-400">
+                <span class="text-4xl mb-2 block">🔍</span>
+                <p>No students detected yet</p>
+                <p class="text-sm mt-1">Start scanning to recognize faces</p>
             </div>
         </div>
     </div>
 
-    <!-- Status Message -->
-    <div id="statusMessage" class="hidden bg-white p-4 rounded-lg shadow-lg mb-4 text-center font-medium"></div>
+    <!-- Actions -->
+    <div class="grid grid-cols-2 gap-4 mb-8">
+        <button id="finalizeBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl">
+            <span class="text-xl">💾</span>
+            Save to DB
+        </button>
+        <button id="resetBtn" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2">
+            <span class="text-xl">🔄</span>
+            Reset
+        </button>
+    </div>
 
-    <!-- Detected Students List -->
-    <div class="bg-white p-4 rounded-lg shadow-lg">
-        <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-            <span>👥</span> Detected Students
-            <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm" id="totalDetected">0</span>
-        </h2>
-        <ul id="detectedList" class="space-y-2 max-h-64 overflow-y-auto">
-            <li class="text-gray-500 italic text-center py-4">Start scanning to detect students...</li>
+    <!-- Tips -->
+    <div class="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-5 border border-indigo-100">
+        <h3 class="font-bold text-slate-800 mb-3 flex items-center gap-2">
+            <span>💡</span> Tips for Best Results
+        </h3>
+        <ul class="text-sm text-slate-600 space-y-2">
+            <li class="flex items-start gap-2">
+                <span class="text-green-500">✓</span>
+                Ensure good lighting on faces
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-green-500">✓</span>
+                Hold camera steady for 2-3 seconds
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-green-500">✓</span>
+                Keep faces clearly visible, no obstructions
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-green-500">✓</span>
+                Use back camera for better quality
+            </li>
         </ul>
     </div>
 </div>
@@ -92,11 +220,14 @@
     const finalizeBtn = document.getElementById('finalizeBtn');
     const resetBtn = document.getElementById('resetBtn');
     const cameraStatus = document.getElementById('cameraStatus');
+    const statusDot = document.getElementById('statusDot');
     const detectedCount = document.getElementById('detectedCount');
     const totalDetected = document.getElementById('totalDetected');
     const detectedList = document.getElementById('detectedList');
     const statusMessage = document.getElementById('statusMessage');
-    const processingIndicator = document.getElementById('processingIndicator');
+    const processingOverlay = document.getElementById('processingOverlay');
+    const scanningBadge = document.getElementById('scanningBadge');
+    const cameraPlaceholder = document.getElementById('cameraPlaceholder');
 
     // State
     let stream = null;
@@ -104,20 +235,17 @@
     let scanInterval = null;
     let ctx = captureCanvas.getContext('2d');
     let overlayCtx = canvasOverlay.getContext('2d');
-    
-    // Track the actual dimensions of the frame sent to server (for coordinate scaling)
     let sentFrameWidth = 0;
     let sentFrameHeight = 0;
     
     // Configuration
-    const SCAN_INTERVAL_MS = 500; // Send frame every 500ms (2 FPS) to avoid overloading server
-    const FRAME_QUALITY = 0.7; // JPEG quality (0.0 - 1.0)
-    const MAX_FRAME_WIDTH = 640; // Resize for faster upload
+    const SCAN_INTERVAL_MS = 500;
+    const FRAME_QUALITY = 0.7;
+    const MAX_FRAME_WIDTH = 640;
 
     // Initialize camera list
     async function initCameraList() {
         try {
-            // Request permission first
             const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
             tempStream.getTracks().forEach(track => track.stop());
             
@@ -129,7 +257,6 @@
                 const option = document.createElement('option');
                 option.value = device.deviceId;
                 option.text = device.label || `Camera ${index + 1}`;
-                // Prefer back camera on mobile
                 if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) {
                     option.selected = true;
                 }
@@ -137,12 +264,16 @@
             });
             
             if (videoDevices.length === 0) {
-                cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+                cameraSelect.innerHTML = '<option value="">No cameras</option>';
                 showStatus('No cameras available', 'error');
+            } else {
+                cameraStatus.textContent = 'Ready';
+                statusDot.classList.remove('bg-slate-400');
+                statusDot.classList.add('bg-yellow-400');
             }
         } catch (err) {
             console.error('Camera access error:', err);
-            cameraSelect.innerHTML = '<option value="">Camera access denied</option>';
+            cameraSelect.innerHTML = '<option value="">Access denied</option>';
             showStatus('Please allow camera access', 'error');
         }
     }
@@ -159,17 +290,16 @@
                     deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
                     width: { ideal: 1280 },
                     height: { ideal: 720 },
-                    facingMode: cameraSelect.value ? undefined : 'environment' // Prefer back camera
+                    facingMode: cameraSelect.value ? undefined : 'environment'
                 }
             };
             
             stream = await navigator.mediaDevices.getUserMedia(constraints);
             videoPreview.srcObject = stream;
+            cameraPlaceholder.classList.add('hidden');
             
-            // Wait for video to be ready
             await new Promise(resolve => {
                 videoPreview.onloadedmetadata = () => {
-                    // Set canvas sizes to match video
                     captureCanvas.width = videoPreview.videoWidth;
                     captureCanvas.height = videoPreview.videoHeight;
                     canvasOverlay.width = videoPreview.clientWidth;
@@ -178,11 +308,15 @@
                 };
             });
             
-            cameraStatus.textContent = '📷 Camera ready';
+            cameraStatus.textContent = 'Camera active';
+            statusDot.classList.remove('bg-slate-400', 'bg-yellow-400');
+            statusDot.classList.add('bg-green-500');
             return true;
         } catch (err) {
             console.error('Camera error:', err);
-            cameraStatus.textContent = '❌ Camera error';
+            cameraStatus.textContent = 'Camera error';
+            statusDot.classList.remove('bg-green-500', 'bg-yellow-400');
+            statusDot.classList.add('bg-red-500');
             showStatus('Failed to access camera: ' + err.message, 'error');
             return false;
         }
@@ -193,10 +327,8 @@
         if (!isScanning || !stream) return;
         
         try {
-            // Draw current video frame to canvas
             ctx.drawImage(videoPreview, 0, 0, captureCanvas.width, captureCanvas.height);
             
-            // Resize if too large and track sent dimensions
             let sendCanvas = captureCanvas;
             if (captureCanvas.width > MAX_FRAME_WIDTH) {
                 const ratio = MAX_FRAME_WIDTH / captureCanvas.width;
@@ -207,16 +339,13 @@
                 sendCanvas = resizeCanvas;
             }
             
-            // Track the actual sent dimensions for coordinate mapping
             sentFrameWidth = sendCanvas.width;
             sentFrameHeight = sendCanvas.height;
             
-            // Convert to base64
             const frameData = sendCanvas.toDataURL('image/jpeg', FRAME_QUALITY);
             
-            processingIndicator.classList.remove('hidden');
+            processingOverlay.classList.remove('hidden');
             
-            // Send to server
             const response = await fetch('/api/process_frame', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -226,27 +355,20 @@
             if (!response.ok) throw new Error('Server error');
             
             const result = await response.json();
-            
-            // Update UI with results
             updateDetectionUI(result);
-            
-            // Draw face boxes on overlay
             drawFaceBoxes(result.faces || []);
             
         } catch (err) {
             console.error('Processing error:', err);
         } finally {
-            processingIndicator.classList.add('hidden');
+            processingOverlay.classList.add('hidden');
         }
     }
 
     // Draw face detection boxes
     function drawFaceBoxes(faces) {
-        // Clear overlay
         overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
         
-        // Scale factors: server returns coordinates relative to sent frame size
-        // We need to scale from sent frame to overlay (display) size
         const scaleX = canvasOverlay.width / sentFrameWidth;
         const scaleY = canvasOverlay.height / sentFrameHeight;
         
@@ -256,19 +378,28 @@
             const w = (face.right - face.left) * scaleX;
             const h = (face.bottom - face.top) * scaleY;
             
-            // Draw box
-            overlayCtx.strokeStyle = face.recognized ? '#00ff00' : '#ff0000';
+            const isRecognized = face.recognized;
+            const color = isRecognized ? '#22c55e' : '#ef4444';
+            
+            // Draw rounded box
+            overlayCtx.strokeStyle = color;
             overlayCtx.lineWidth = 3;
-            overlayCtx.strokeRect(x, y, w, h);
+            overlayCtx.beginPath();
+            overlayCtx.roundRect(x, y, w, h, 8);
+            overlayCtx.stroke();
             
-            // Draw label background
-            overlayCtx.fillStyle = face.recognized ? '#00ff00' : '#ff0000';
-            overlayCtx.fillRect(x, y + h, w, 25);
+            // Draw label
+            const label = face.name + (face.confidence ? ` ${Math.round(face.confidence * 100)}%` : '');
+            overlayCtx.font = 'bold 13px Inter, system-ui, sans-serif';
+            const textWidth = overlayCtx.measureText(label).width;
             
-            // Draw label text
+            overlayCtx.fillStyle = color;
+            overlayCtx.beginPath();
+            overlayCtx.roundRect(x, y + h + 4, textWidth + 16, 24, 6);
+            overlayCtx.fill();
+            
             overlayCtx.fillStyle = '#ffffff';
-            overlayCtx.font = 'bold 14px Arial';
-            overlayCtx.fillText(face.name + (face.confidence ? ` (${Math.round(face.confidence * 100)}%)` : ''), x + 5, y + h + 18);
+            overlayCtx.fillText(label, x + 8, y + h + 20);
         });
     }
 
@@ -279,10 +410,21 @@
         
         if (result.students && result.students.length > 0) {
             detectedList.innerHTML = result.students.map(student => `
-                <li class="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <span class="font-medium">✓ ${student.name}</span>
-                    <span class="text-sm text-gray-500">Roll: ${student.roll_no} | ${student.time}</span>
-                </li>
+                <div class="student-card flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                            ${student.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <div class="font-semibold text-slate-800">${student.name}</div>
+                            <div class="text-sm text-slate-500">Roll #${student.roll_no}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-green-600 font-medium text-sm">✓ Present</div>
+                        <div class="text-xs text-slate-400">${student.time}</div>
+                    </div>
+                </div>
             `).join('');
         }
     }
@@ -295,9 +437,9 @@
         isScanning = true;
         startBtn.disabled = true;
         stopBtn.disabled = false;
-        cameraStatus.textContent = '🔍 Scanning...';
+        scanningBadge.classList.remove('hidden');
+        cameraStatus.textContent = 'Scanning...';
         
-        // Start periodic frame capture
         scanInterval = setInterval(captureAndProcess, SCAN_INTERVAL_MS);
         showStatus('Scanning started. Point camera at students.', 'success');
     });
@@ -311,9 +453,10 @@
         }
         startBtn.disabled = false;
         stopBtn.disabled = true;
-        cameraStatus.textContent = '⏸️ Paused';
+        scanningBadge.classList.add('hidden');
+        cameraStatus.textContent = 'Paused';
         overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
-        showStatus('Scanning paused.', 'info');
+        showStatus('Scanning paused', 'info');
     });
 
     // Finalize attendance
@@ -329,10 +472,10 @@
             const data = await response.json();
             
             if (response.ok) {
-                showStatus(`✅ ${data.message} Present: ${data.present_count}, Absent: ${data.absent_count}`, 'success');
+                showStatus(`✅ Saved! Present: ${data.present_count}, Absent: ${data.absent_count}`, 'success');
                 refreshSessionStatus();
             } else {
-                showStatus(`❌ Error: ${data.error}`, 'error');
+                showStatus(`❌ ${data.error}`, 'error');
             }
         } catch (err) {
             showStatus('Network error', 'error');
@@ -345,8 +488,15 @@
         
         try {
             await fetch('/api/session/reset', { method: 'POST' });
-            showStatus('Session reset', 'info');
+            showStatus('Session cleared', 'info');
             refreshSessionStatus();
+            detectedList.innerHTML = `
+                <div class="text-center py-8 text-slate-400">
+                    <span class="text-4xl mb-2 block">🔍</span>
+                    <p>No students detected yet</p>
+                    <p class="text-sm mt-1">Start scanning to recognize faces</p>
+                </div>
+            `;
         } catch (err) {
             showStatus('Reset failed', 'error');
         }
@@ -361,14 +511,23 @@
             detectedCount.textContent = data.count;
             totalDetected.textContent = data.count;
             
-            if (data.count === 0) {
-                detectedList.innerHTML = '<li class="text-gray-500 italic text-center py-4">Start scanning to detect students...</li>';
-            } else {
+            if (data.count > 0 && data.students) {
                 detectedList.innerHTML = data.students.map(student => `
-                    <li class="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <span class="font-medium">✓ ${student.name}</span>
-                        <span class="text-sm text-gray-500">Roll: ${student.roll_no} | ${student.time}</span>
-                    </li>
+                    <div class="student-card flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white font-bold">
+                                ${student.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div class="font-semibold text-slate-800">${student.name}</div>
+                                <div class="text-sm text-slate-500">Roll #${student.roll_no}</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-green-600 font-medium text-sm">✓ Present</div>
+                            <div class="text-xs text-slate-400">${student.time}</div>
+                        </div>
+                    </div>
                 `).join('');
             }
         } catch (err) {
@@ -378,30 +537,26 @@
 
     // Show status message
     function showStatus(message, type) {
-        statusMessage.classList.remove('hidden', 'text-green-600', 'text-red-600', 'text-blue-600', 'bg-green-50', 'bg-red-50', 'bg-blue-50');
+        statusMessage.classList.remove('hidden', 'bg-green-100', 'text-green-700', 'bg-red-100', 'text-red-700', 'bg-blue-100', 'text-blue-700');
         
         if (type === 'success') {
-            statusMessage.classList.add('text-green-600', 'bg-green-50');
+            statusMessage.classList.add('bg-green-100', 'text-green-700');
         } else if (type === 'error') {
-            statusMessage.classList.add('text-red-600', 'bg-red-50');
+            statusMessage.classList.add('bg-red-100', 'text-red-700');
         } else {
-            statusMessage.classList.add('text-blue-600', 'bg-blue-50');
+            statusMessage.classList.add('bg-blue-100', 'text-blue-700');
         }
         
         statusMessage.textContent = message;
-        
-        // Auto-hide after 5 seconds
         setTimeout(() => statusMessage.classList.add('hidden'), 5000);
     }
 
     // Camera change handler
     cameraSelect.addEventListener('change', () => {
-        if (stream) {
-            startCamera();
-        }
+        if (stream) startCamera();
     });
 
-    // Handle page visibility (pause when tab is hidden)
+    // Handle page visibility
     document.addEventListener('visibilitychange', () => {
         if (document.hidden && isScanning) {
             clearInterval(scanInterval);
@@ -413,8 +568,6 @@
     // Initialize
     initCameraList();
     refreshSessionStatus();
-    
-    // Periodic status refresh
     setInterval(refreshSessionStatus, 3000);
 </script>
 {% endblock %}
