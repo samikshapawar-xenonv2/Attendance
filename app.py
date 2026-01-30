@@ -440,7 +440,7 @@ def process_frame():
         
         # Log for debugging
         if face_locations:
-            print(f"[API] Detected {len(face_locations)} face(s), processing time: {processing_time*1000:.0f}ms")
+            print(f"[API] Detected {len(face_locations)} face(s), processing time: {processing_time*1000:.0f}ms", flush=True)
         
         # Scale factor for returning coordinates
         scale_factor = 1.0 / FRAME_RESIZE_SCALE
@@ -475,20 +475,14 @@ def process_frame():
                 
                 # Log best match for debugging
                 best_name = KNOWN_FACE_IDS[best_match_index] if best_match_index < len(KNOWN_FACE_IDS) else "N/A"
-                print(f"[API] Best match: {best_name}, distance: {best_distance:.3f}, confidence: {confidence:.2%}, tolerance: {FACE_RECOGNITION_TOLERANCE}, threshold: {CONFIDENCE_THRESHOLD}")
+                print(f"[API] Best match: {best_name}, distance: {best_distance:.3f}, confidence: {confidence:.2%}, tolerance: {FACE_RECOGNITION_TOLERANCE}, threshold: {CONFIDENCE_THRESHOLD}", flush=True)
                 
                 if matches[best_match_index] and confidence >= CONFIDENCE_THRESHOLD:
                     full_id = KNOWN_FACE_IDS[best_match_index]
                     roll_no, student_name = full_id.split('_', 1)
                     name = student_name.replace('_', ' ')
                     recognized = True
-                    print(f"[API] ✓ Recognized: {name} (Roll {roll_no})")
-                else:
-                    # Log why it failed
-                    if not matches[best_match_index]:
-                        print(f"[API] ✗ Failed: distance {best_distance:.3f} > tolerance {FACE_RECOGNITION_TOLERANCE}")
-                    else:
-                        print(f"[API] ✗ Failed: confidence {confidence:.2%} < threshold {CONFIDENCE_THRESHOLD:.0%}")
+                    print(f"[API] ✓ Recognized: {name} (Roll {roll_no})", flush=True)
                     
                     detected_in_frame.add(roll_no)
                     
@@ -500,7 +494,13 @@ def process_frame():
                     # Mark attendance after sufficient detections
                     if roll_no not in attendance_session.get_all() and DETECTION_COUNTER[roll_no] >= MIN_DETECTION_COUNT:
                         attendance_session.add(roll_no, name)
-                        print(f"✓ [Mobile] Attendance marked: {name} (Roll {roll_no}) - Confidence: {confidence:.2%}")
+                        print(f"✓ [Mobile] Attendance marked: {name} (Roll {roll_no}) - Confidence: {confidence:.2%}", flush=True)
+                else:
+                    # Log why it failed
+                    if not matches[best_match_index]:
+                        print(f"[API] ✗ Failed: distance {best_distance:.3f} > tolerance {FACE_RECOGNITION_TOLERANCE}", flush=True)
+                    else:
+                        print(f"[API] ✗ Failed: confidence {confidence:.2%} < threshold {CONFIDENCE_THRESHOLD:.0%}", flush=True)
             
             faces.append({
                 "top": top,
@@ -547,6 +547,22 @@ def session_status():
             {"roll_no": k, "name": v['name'], "time": v['time']} 
             for k, v in attendance_session.get_all().items()
         ]
+    })
+
+
+@app.route('/api/debug/model', methods=['GET'])
+def debug_model():
+    """Debug endpoint to check if the model is loaded correctly."""
+    unique_students = set(KNOWN_FACE_IDS)
+    return jsonify({
+        "model_loaded": len(KNOWN_FACE_ENCODINGS) > 0,
+        "total_encodings": len(KNOWN_FACE_ENCODINGS),
+        "unique_students": len(unique_students),
+        "student_list": sorted(list(unique_students)),
+        "tolerance": FACE_RECOGNITION_TOLERANCE,
+        "confidence_threshold": CONFIDENCE_THRESHOLD,
+        "frame_resize_scale": FRAME_RESIZE_SCALE,
+        "hybrid_model": USE_HYBRID_MODEL
     })
 
 
@@ -1177,3 +1193,6 @@ if __name__ == '__main__':
         # Set debug=False and host='0.0.0.0'
         port = int(os.environ.get('PORT', 5000))
         app.run(host='0.0.0.0', port=port, debug=False)
+else:
+    # When running with gunicorn/wsgi, load model at import time
+    load_model()
