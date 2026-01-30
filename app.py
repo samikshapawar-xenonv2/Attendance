@@ -69,9 +69,9 @@ class AttendanceSession:
 attendance_session = AttendanceSession()
 
 # OPTIMIZED accuracy configuration for mobile/web camera
-# These settings balance accuracy with varying lighting/angles
-FACE_RECOGNITION_TOLERANCE = 0.5  # Slightly relaxed (default 0.6). Range: 0.0-1.0
-CONFIDENCE_THRESHOLD = 0.45  # Lowered for mobile camera conditions
+# These settings are MORE LENIENT for varying lighting/angles/photo quality
+FACE_RECOGNITION_TOLERANCE = 0.55  # More relaxed (default 0.6). Range: 0.0-1.0
+CONFIDENCE_THRESHOLD = 0.40  # Lower threshold for mobile camera conditions
 MIN_DETECTION_COUNT = 2  # Number of consecutive detections before marking attendance
 DETECTION_COUNTER = {}  # Track consecutive detections: {RollNo: count}
 
@@ -475,7 +475,7 @@ def process_frame():
                 
                 # Log best match for debugging
                 best_name = KNOWN_FACE_IDS[best_match_index] if best_match_index < len(KNOWN_FACE_IDS) else "N/A"
-                print(f"[API] Best match: {best_name}, distance: {best_distance:.3f}, confidence: {confidence:.2%}")
+                print(f"[API] Best match: {best_name}, distance: {best_distance:.3f}, confidence: {confidence:.2%}, tolerance: {FACE_RECOGNITION_TOLERANCE}, threshold: {CONFIDENCE_THRESHOLD}")
                 
                 if matches[best_match_index] and confidence >= CONFIDENCE_THRESHOLD:
                     full_id = KNOWN_FACE_IDS[best_match_index]
@@ -483,6 +483,12 @@ def process_frame():
                     name = student_name.replace('_', ' ')
                     recognized = True
                     print(f"[API] ✓ Recognized: {name} (Roll {roll_no})")
+                else:
+                    # Log why it failed
+                    if not matches[best_match_index]:
+                        print(f"[API] ✗ Failed: distance {best_distance:.3f} > tolerance {FACE_RECOGNITION_TOLERANCE}")
+                    else:
+                        print(f"[API] ✗ Failed: confidence {confidence:.2%} < threshold {CONFIDENCE_THRESHOLD:.0%}")
                     
                     detected_in_frame.add(roll_no)
                     
