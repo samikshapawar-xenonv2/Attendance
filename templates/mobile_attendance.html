@@ -109,17 +109,6 @@
                 <span class="text-white/80 text-sm"> detected</span>
             </div>
             
-            <!-- Processing Overlay -->
-            <div id="processingOverlay" class="hidden absolute inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center">
-                <div class="bg-white rounded-2xl px-6 py-4 flex items-center gap-3">
-                    <svg class="animate-spin h-5 w-5 text-indigo-600" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span class="font-medium text-slate-700">Processing...</span>
-                </div>
-            </div>
-            
             <!-- Placeholder when camera off -->
             <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white">
                 <span class="text-6xl mb-4">📷</span>
@@ -225,23 +214,26 @@
     const totalDetected = document.getElementById('totalDetected');
     const detectedList = document.getElementById('detectedList');
     const statusMessage = document.getElementById('statusMessage');
-    const processingOverlay = document.getElementById('processingOverlay');
     const scanningBadge = document.getElementById('scanningBadge');
     const cameraPlaceholder = document.getElementById('cameraPlaceholder');
 
     // State
     let stream = null;
     let isScanning = false;
-    let scanInterval = null;
     let ctx = captureCanvas.getContext('2d');
     let overlayCtx = canvasOverlay.getContext('2d');
     let sentFrameWidth = 0;
     let sentFrameHeight = 0;
+    let lastProcessingTime = 0;
+    let isProcessing = false;  // Prevent overlapping requests
     
-    // Configuration
-    const SCAN_INTERVAL_MS = 500;
-    const FRAME_QUALITY = 0.7;
-    const MAX_FRAME_WIDTH = 640;
+    // SUPER-FAST Configuration - minimal latency
+    const BASE_SCAN_INTERVAL_MS = 300;  // Fast base interval
+    const MIN_SCAN_INTERVAL_MS = 200;   // Minimum 200ms between scans
+    const MAX_SCAN_INTERVAL_MS = 1000;  // Max 1 second
+    const FRAME_QUALITY = 0.6;  // Lower quality = smaller data = faster upload
+    const MAX_FRAME_WIDTH = 640;  // Smaller frame = faster processing
+    let currentInterval = BASE_SCAN_INTERVAL_MS;
 
     // Initialize camera list
     async function initCameraList() {
@@ -322,9 +314,12 @@
         }
     }
 
-    // Capture frame and send to server
+    // Capture frame and send to server (NON-BLOCKING & ADAPTIVE)
     async function captureAndProcess() {
-        if (!isScanning || !stream) return;
+        if (!isScanning || !stream || isProcessing) return;
+        
+        isProcessing = true;
+        const startTime = performance.now();
         
         try {
             ctx.drawImage(videoPreview, 0, 0, captureCanvas.width, captureCanvas.height);
@@ -344,8 +339,6 @@
             
             const frameData = sendCanvas.toDataURL('image/jpeg', FRAME_QUALITY);
             
-            processingOverlay.classList.remove('hidden');
-            
             const response = await fetch('/api/process_frame', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -355,13 +348,27 @@
             if (!response.ok) throw new Error('Server error');
             
             const result = await response.json();
+            
+            // Calculate total round-trip time
+            const totalTime = performance.now() - startTime;
+            lastProcessingTime = result.processing_time_ms || totalTime;
+            
+            // FAST: Simple adaptive interval
+            currentInterval = Math.max(MIN_SCAN_INTERVAL_MS, Math.min(MAX_SCAN_INTERVAL_MS, lastProcessingTime + 100));
+            
+            // Quick status update
+            cameraStatus.textContent = `${result.faces_detected} faces`;
+            
             updateDetectionUI(result);
             drawFaceBoxes(result.faces || []);
             
         } catch (err) {
             console.error('Processing error:', err);
+            currentInterval = MAX_SCAN_INTERVAL_MS;  // Slow down on error
         } finally {
-            processingOverlay.classList.add('hidden');
+            isProcessing = false;
+            // Immediately schedule next frame
+            if (isScanning) setTimeout(captureAndProcess, currentInterval);
         }
     }
 
@@ -429,28 +436,28 @@
         }
     }
 
-    // Start scanning
+    // Start scanning (ADAPTIVE - no fixed interval)
     startBtn.addEventListener('click', async () => {
         const cameraReady = await startCamera();
         if (!cameraReady) return;
         
         isScanning = true;
+        isProcessing = false;
+        currentInterval = BASE_SCAN_INTERVAL_MS;
         startBtn.disabled = true;
         stopBtn.disabled = false;
         scanningBadge.classList.remove('hidden');
         cameraStatus.textContent = 'Scanning...';
         
-        scanInterval = setInterval(captureAndProcess, SCAN_INTERVAL_MS);
+        // Start adaptive scanning (captureAndProcess schedules itself)
+        captureAndProcess();
         showStatus('Scanning started. Point camera at students.', 'success');
     });
 
     // Stop scanning
     stopBtn.addEventListener('click', () => {
         isScanning = false;
-        if (scanInterval) {
-            clearInterval(scanInterval);
-            scanInterval = null;
-        }
+        isProcessing = false;
         startBtn.disabled = false;
         stopBtn.disabled = true;
         scanningBadge.classList.add('hidden');
@@ -582,12 +589,13 @@
         if (stream) startCamera();
     });
 
-    // Handle page visibility
+    // Handle page visibility - pause/resume scanning
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden && isScanning) {
-            clearInterval(scanInterval);
-        } else if (!document.hidden && isScanning) {
-            scanInterval = setInterval(captureAndProcess, SCAN_INTERVAL_MS);
+        // When tab becomes hidden, just let the current scan finish
+        // isScanning will prevent new scans from starting if false
+        if (!document.hidden && isScanning && !isProcessing) {
+            // Resume scanning when page becomes visible again
+            captureAndProcess();
         }
     });
 
