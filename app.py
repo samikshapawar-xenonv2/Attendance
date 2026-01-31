@@ -255,13 +255,23 @@ def batch_recognize_faces(face_encodings):
         # Check if match passes tolerance AND confidence threshold
         is_match = best_distance <= FACE_RECOGNITION_TOLERANCE and confidence >= CONFIDENCE_THRESHOLD
         
-        # Additional check: ensure match is significantly better than alternatives
-        sorted_distances = np.sort(face_distances)
-        if len(sorted_distances) > 1:
-            # Best match should be at least 0.02 better than second best (relaxed)
-            is_ambiguous = sorted_distances[0] + 0.02 > sorted_distances[1]
-            if is_ambiguous:
-                is_match = False
+        # FIXED: Only check ambiguity against DIFFERENT students
+        # Multiple encodings of the SAME student should not trigger ambiguity
+        if is_match and len(face_distances) > 1:
+            best_roll = KNOWN_FACE_IDS[best_match_index].split('_')[0]
+            
+            # Find best distance for a DIFFERENT student
+            second_best_distance = float('inf')
+            for idx, dist in enumerate(face_distances):
+                if idx != best_match_index:
+                    other_roll = KNOWN_FACE_IDS[idx].split('_')[0]
+                    if other_roll != best_roll and dist < second_best_distance:
+                        second_best_distance = dist
+            
+            # Only reject if a DIFFERENT student is very close
+            if second_best_distance < float('inf'):
+                if best_distance + 0.03 > second_best_distance:
+                    is_match = False  # Too close to another student
         
         if is_match:
             full_id = KNOWN_FACE_IDS[best_match_index]
