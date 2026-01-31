@@ -227,12 +227,12 @@
     let lastProcessingTime = 0;
     let isProcessing = false;  // Prevent overlapping requests
     
-    // SUPER-FAST Configuration - minimal latency
-    const BASE_SCAN_INTERVAL_MS = 300;  // Fast base interval
-    const MIN_SCAN_INTERVAL_MS = 200;   // Minimum 200ms between scans
-    const MAX_SCAN_INTERVAL_MS = 1000;  // Max 1 second
-    const FRAME_QUALITY = 0.6;  // Lower quality = smaller data = faster upload
-    const MAX_FRAME_WIDTH = 640;  // Smaller frame = faster processing
+    // OPTIMIZED Configuration - balance speed + quality
+    const BASE_SCAN_INTERVAL_MS = 400;  // Slightly slower for quality
+    const MIN_SCAN_INTERVAL_MS = 300;   // Minimum 300ms between scans
+    const MAX_SCAN_INTERVAL_MS = 1200;  // Max 1.2 seconds
+    const FRAME_QUALITY = 0.75;  // Higher quality = better face detail
+    const MAX_FRAME_WIDTH = 720;  // Larger frame = more face detail
     let currentInterval = BASE_SCAN_INTERVAL_MS;
 
     // Initialize camera list

@@ -69,12 +69,12 @@ class AttendanceSession:
 attendance_session = AttendanceSession()
 
 # ==============================================================================
-# SUPER-FAST BATCH PROCESSING - OPTIMIZED FOR SPEED + ACCURACY
+# OPTIMIZED FOR DETECTION + ACCURACY (Mobile friendly)
 # ==============================================================================
 
-# Recognition settings - STRICT for accuracy
-FACE_RECOGNITION_TOLERANCE = 0.48  # Stricter tolerance (lower = stricter)
-CONFIDENCE_THRESHOLD = 0.54  # Higher threshold = more accurate
+# Recognition settings - BALANCED for detection
+FACE_RECOGNITION_TOLERANCE = 0.55  # More lenient (0.6 = default, lower = stricter)
+CONFIDENCE_THRESHOLD = 0.45  # Lower threshold = detect more faces
 MIN_DETECTION_COUNT = 1  # INSTANT marking - no delay
 DETECTION_COUNTER = {}  # Track consecutive detections: {RollNo: count}
 
@@ -103,9 +103,9 @@ try:
     # Use model_selection=1 for FULL-RANGE detection (better for classroom with 20-25 students)
     mp_face_detector = mp_face_detection.FaceDetection(
         model_selection=1,  # 1 = full-range (5m) - better for classrooms
-        min_detection_confidence=0.6  # Slightly lower to catch more faces at distance
+        min_detection_confidence=0.5  # Lower to catch more faces
     )
-    print("MediaPipe face detection initialized (full-range mode, confidence=0.6)")
+    print("MediaPipe face detection initialized (full-range mode, confidence=0.5)")
 except Exception as e:
     print(f"WARNING: MediaPipe initialization failed: {e}")
     print("Falling back to pure Face_Recognition (dlib) model. Performance may be slower.")
@@ -258,8 +258,8 @@ def batch_recognize_faces(face_encodings):
         # Additional check: ensure match is significantly better than alternatives
         sorted_distances = np.sort(face_distances)
         if len(sorted_distances) > 1:
-            # Best match should be at least 0.04 better than second best
-            is_ambiguous = sorted_distances[0] + 0.04 > sorted_distances[1]
+            # Best match should be at least 0.02 better than second best (relaxed)
+            is_ambiguous = sorted_distances[0] + 0.02 > sorted_distances[1]
             if is_ambiguous:
                 is_match = False
         
