@@ -236,7 +236,7 @@ def batch_recognize_faces(face_encodings):
     global KNOWN_ENCODINGS_ARRAY
     
     if len(face_encodings) == 0 or KNOWN_ENCODINGS_ARRAY is None or len(KNOWN_ENCODINGS_ARRAY) == 0:
-        return [(\"Unknown\", None, 0.0, False) for _ in face_encodings]
+        return [("Unknown", None, 0.0, False) for _ in face_encodings]
     
     # Convert to numpy array for vectorized operations
     unknown_encodings = np.array(face_encodings)
@@ -270,7 +270,7 @@ def batch_recognize_faces(face_encodings):
             name = parts[1].replace('_', ' ') if len(parts) > 1 else full_id
             results.append((name, roll_no, confidence, True))
         else:
-            results.append((\"Unknown\", None, confidence, False))
+            results.append(("Unknown", None, confidence, False))
     
     return results
 
@@ -328,7 +328,7 @@ def generate_frames():
             # --- ENCODING STEP (Always use dlib - it's accurate) ---
             face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
             
-            # Calculate processing tim
+            # Calculate processing time
             processing_time = time.time() - start_time
 
             detected_in_frame = set()
