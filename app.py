@@ -328,7 +328,7 @@ def generate_frames():
             # --- ENCODING STEP (Always use dlib - it's accurate) ---
             face_encodings = face_recognition.face_encodings(rgb_frame, face_locations, num_jitters=1)
             
-            # Calculate processing time
+            # Calculate processing tim
             processing_time = time.time() - start_time
 
             detected_in_frame = set()
