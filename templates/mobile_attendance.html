@@ -602,6 +602,11 @@
     // Initialize
     initCameraList();
     refreshSessionStatus();
-    setInterval(refreshSessionStatus, 3000);
+    
+    // Only refresh session status when NOT actively scanning
+    // (to prevent overwriting the UI during active detection)
+    setInterval(() => {
+        if (!isScanning) refreshSessionStatus();
+    }, 3000);
 </script>
 {% endblock %}

@@ -38,7 +38,7 @@ RUN mkdir -p /app/temp && chmod 777 /app/temp
 # Expose port for gunicorn
 EXPOSE 5000
 
-# Use gunicorn for production with multiple workers
-# Workers = (2 * CPU cores) + 1, using 2 workers for EC2 t2.micro/t3.micro
-# Timeout increased for face recognition processing
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--keep-alive", "5", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# Use gunicorn for production with SINGLE worker
+# IMPORTANT: Using 1 worker to ensure consistent in-memory session state
+# Multiple workers would each have their own attendance_session, causing data inconsistency
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "--keep-alive", "5", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
