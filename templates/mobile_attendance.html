@@ -487,18 +487,33 @@
         if (!confirm('Clear all detected students?')) return;
         
         try {
-            await fetch('/api/session/reset', { method: 'POST' });
-            showStatus('Session cleared', 'info');
-            refreshSessionStatus();
-            detectedList.innerHTML = `
-                <div class="text-center py-8 text-slate-400">
-                    <span class="text-4xl mb-2 block">🔍</span>
-                    <p>No students detected yet</p>
-                    <p class="text-sm mt-1">Start scanning to recognize faces</p>
-                </div>
-            `;
+            const response = await fetch('/api/session/reset', { method: 'POST' });
+            const data = await response.json();
+            
+            if (data.success || response.ok) {
+                // Update counters immediately
+                detectedCount.textContent = '0';
+                totalDetected.textContent = '0';
+                
+                // Clear the list immediately
+                detectedList.innerHTML = `
+                    <div class="text-center py-8 text-slate-400">
+                        <span class="text-4xl mb-2 block">🔍</span>
+                        <p>No students detected yet</p>
+                        <p class="text-sm mt-1">Start scanning to recognize faces</p>
+                    </div>
+                `;
+                
+                // Clear face overlay
+                overlayCtx.clearRect(0, 0, canvasOverlay.width, canvasOverlay.height);
+                
+                showStatus('✓ Session cleared - all students removed', 'success');
+            } else {
+                showStatus('Reset failed: ' + (data.error || 'Unknown error'), 'error');
+            }
         } catch (err) {
-            showStatus('Reset failed', 'error');
+            console.error('Reset error:', err);
+            showStatus('Reset failed - network error', 'error');
         }
     });
 
@@ -508,10 +523,12 @@
             const response = await fetch('/api/session/status');
             const data = await response.json();
             
-            detectedCount.textContent = data.count;
-            totalDetected.textContent = data.count;
+            detectedCount.textContent = data.count || 0;
+            totalDetected.textContent = data.count || 0;
             
-            if (data.count > 0 && data.students) {
+            // Only update the list if there are students
+            // This prevents overwriting the empty state message after reset
+            if (data.count > 0 && data.students && data.students.length > 0) {
                 detectedList.innerHTML = data.students.map(student => `
                     <div class="student-card flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl">
                         <div class="flex items-center gap-3">
@@ -529,6 +546,15 @@
                         </div>
                     </div>
                 `).join('');
+            } else if (data.count === 0) {
+                // Show empty state when count is explicitly 0
+                detectedList.innerHTML = `
+                    <div class="text-center py-8 text-slate-400">
+                        <span class="text-4xl mb-2 block">🔍</span>
+                        <p>No students detected yet</p>
+                        <p class="text-sm mt-1">Start scanning to recognize faces</p>
+                    </div>
+                `;
             }
         } catch (err) {
             console.error('Status refresh error:', err);

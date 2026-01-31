@@ -69,10 +69,11 @@ class AttendanceSession:
 attendance_session = AttendanceSession()
 
 # OPTIMIZED accuracy configuration for mobile/web camera
-# These settings are MORE LENIENT for varying lighting/angles/photo quality
-FACE_RECOGNITION_TOLERANCE = 0.55  # More relaxed (default 0.6). Range: 0.0-1.0
-CONFIDENCE_THRESHOLD = 0.40  # Lower threshold for mobile camera conditions
-MIN_DETECTION_COUNT = 2  # Number of consecutive detections before marking attendance
+# These settings balance accuracy vs. false positives
+FACE_RECOGNITION_TOLERANCE = 0.50  # Stricter tolerance (lower = stricter matching)
+CONFIDENCE_THRESHOLD = 0.55  # Raised to 55% to reduce false positives
+MIN_DETECTION_COUNT = 3  # Require 3 consecutive detections for better reliability
+MIN_FACE_ENCODING_QUALITY = 0.6  # Minimum encoding quality score
 DETECTION_COUNTER = {}  # Track consecutive detections: {RollNo: count}
 
 # Performance optimization settings
@@ -477,12 +478,22 @@ def process_frame():
                 best_name = KNOWN_FACE_IDS[best_match_index] if best_match_index < len(KNOWN_FACE_IDS) else "N/A"
                 print(f"[API] Best match: {best_name}, distance: {best_distance:.3f}, confidence: {confidence:.2%}, tolerance: {FACE_RECOGNITION_TOLERANCE}, threshold: {CONFIDENCE_THRESHOLD}", flush=True)
                 
-                if matches[best_match_index] and confidence >= CONFIDENCE_THRESHOLD:
+                # Additional validation: check if this is a reliable match
+                # Require the match to be significantly better than alternatives
+                is_reliable_match = True
+                if len(face_distances) > 1:
+                    sorted_distances = np.sort(face_distances)
+                    # The best match should be at least 0.05 better than second best
+                    if sorted_distances[0] + 0.05 > sorted_distances[1]:
+                        is_reliable_match = False
+                        print(f"[API] ✗ Ambiguous match: best={sorted_distances[0]:.3f}, second={sorted_distances[1]:.3f}", flush=True)
+                
+                if matches[best_match_index] and confidence >= CONFIDENCE_THRESHOLD and is_reliable_match:
                     full_id = KNOWN_FACE_IDS[best_match_index]
                     roll_no, student_name = full_id.split('_', 1)
                     name = student_name.replace('_', ' ')
                     recognized = True
-                    print(f"[API] ✓ Recognized: {name} (Roll {roll_no})", flush=True)
+                    print(f"[API] ✓ Recognized: {name} (Roll {roll_no}) - {confidence:.0%}", flush=True)
                     
                     detected_in_frame.add(roll_no)
                     
@@ -569,10 +580,22 @@ def debug_model():
 @app.route('/api/session/reset', methods=['POST'])
 def reset_session():
     """Resets the current attendance session."""
-    attendance_session.reset()
     global DETECTION_COUNTER
-    DETECTION_COUNTER.clear()
-    return jsonify({"message": "Session reset successfully"})
+    
+    # Clear the attendance session
+    attendance_session.reset()
+    
+    # Clear detection counters
+    DETECTION_COUNTER = {}
+    
+    print("[SESSION] Session reset - all detected students cleared", flush=True)
+    
+    return jsonify({
+        "success": True,
+        "message": "Session reset successfully",
+        "count": 0,
+        "students": []
+    })
 
 
 @app.route('/finalize_attendance', methods=['POST'])
